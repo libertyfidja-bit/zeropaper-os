@@ -1,0 +1,8 @@
+# Hospital Local Server Databases & Encrypted Backups (Never commit to GitHub)
+*.db
+*.db-wal
+*.db-shm
+local_server_backups/
+__pycache__/
+.env
+venv/
