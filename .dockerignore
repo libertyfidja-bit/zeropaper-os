@@ -1,0 +1,12 @@
+.git
+.gitignore
+__pycache__/
+*.pyc
+*.db
+*.db-wal
+*.db-shm
+local_server_backups/
+hospital_server_db/
+hospital_daily_backups/
+venv/
+.env
