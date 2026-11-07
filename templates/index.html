@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZeroPaper OS — 4-in-1 Hospital Terminal & On-Premise Backup Control Plane</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #10b981;
+      --blue: #3b82f6;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 20px; line-height: 1.5; }
+    .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+    .badge { background: rgba(16, 185, 129, 0.15); color: var(--accent); border: 1px solid var(--accent); padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+    .banner { padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 500; border: 1px solid var(--border); background: var(--panel); }
+    .banner.URGENT_1730 { background: rgba(239, 68, 68, 0.15); border-color: var(--danger); color: #fca5a5; }
+    .banner.COMPLETED { background: rgba(16, 185, 129, 0.12); border-color: var(--accent); color: #6ee7b7; }
+    .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+    .metric-card { background: var(--panel); border: 1px solid var(--border); padding: 16px; border-radius: 8px; }
+    .metric-card span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .metric-card h2 { font-size: 26px; margin-top: 4px; color: var(--accent); }
+    .main-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 20px; }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+    .tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 18px; }
+    .tab-btn { background: var(--bg); color: var(--muted); border: 1px solid var(--border); padding: 10px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; text-align: center; }
+    .tab-btn.active { background: var(--blue); color: white; border-color: var(--blue); }
+    .mode-box { display: none; }
+    .mode-box.active { display: block; }
+    label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; margin-top: 12px; }
+    input, select { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: white; font-size: 14px; }
+    .btn { background: var(--accent); color: #052e16; border: none; padding: 11px 16px; border-radius: 6px; font-weight: 700; cursor: pointer; width: 100%; margin-top: 16px; font-size: 14px; }
+    .btn-secondary { background: var(--blue); color: white; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); width: auto; margin-top: 0; padding: 7px 12px; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+    th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; }
+    .ticket-pill { background: rgba(59, 130, 246, 0.2); color: #93c5fd; padding: 2px 8px; border-radius: 4px; font-weight: 700; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div>
+      <h1>ZeroPaper Health & Building OS</h1>
+      <p style="color: var(--muted); font-size: 13px;">Unified 4-Channel Check-In Terminal • Client-Hosted On-Premise Server</p>
+    </div>
+    <span class="badge">LOCAL SERVER DATA RESIDENCY: ACTIVE</span>
+  </div>
+
+  <!-- Watchdog Daily Backup Banner -->
+  <div id="watchdogBanner" class="banner">
+    <span id="watchdogText">Checking local database backup status...</span>
+    <div style="display: flex; gap: 8px;">
+      <button class="btn btn-outline" onclick="simulateReminder()">Test 5:30 PM Warning</button>
+      <button class="btn btn-outline" style="border-color: var(--accent); color: var(--accent);" onclick="runBackup('MANUAL_ADMIN')">Backup Local DB Now</button>
+    </div>
+  </div>
+
+  <!-- Live Environmental & Financial Math Counter -->
+  <div class="metrics-grid">
+    <div class="metric-card">
+      <span>Paper Sheets Eliminated</span>
+      <h2 id="mSheets">0</h2>
+    </div>
+    <div class="metric-card">
+      <span>Full-Grown Trees Saved</span>
+      <h2 id="mTrees">0.0000</h2>
+    </div>
+    <div class="metric-card">
+      <span>CO2 Emissions Prevented</span>
+      <h2 id="mCo2">0.00 kg</h2>
+    </div>
+    <div class="metric-card">
+      <span>Facility Printing Saved</span>
+      <h2 id="mMoney">$0.00</h2>
+    </div>
+  </div>
+
+  <div class="main-grid">
+    <!-- Left Column: 4-in-1 Hardware & Kiosk Terminal -->
+    <div class="panel">
+      <h3 style="margin-bottom: 12px;">Unified 4-in-1 Patient & Visitor Intake Terminal</h3>
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchMode('NFC_CARD', this)">1. NFC Card / Band</button>
+        <button class="tab-btn" onclick="switchMode('TOUCH_KIOSK', this)">2. Touch Kiosk</button>
+        <button class="tab-btn" onclick="switchMode('USSD_SMS', this)">3. USSD (*250#)</button>
+        <button class="tab-btn" onclick="switchMode('ID_OCR', this)">4. National ID OCR</button>
+      </div>
+
+      <!-- Mode 1: NFC -->
+      <div id="NFC_CARD" class="mode-box active">
+        <p style="font-size: 13px; color: var(--muted);">Simulates USB Contactless NFC Reader (ISO 14443-A). Checks repeat patients in under 2 seconds.</p>
+        <label>NFC Tag UID (Auto-Captured on Tap)</label>
+        <input type="text" id="nfcUid" value="04:A9:3F:82:C1" />
+        <label>Linked Patient Profile</label>
+        <input type="text" id="nfcName" value="Jean-Paul Habimana (Repeat Card)" />
+        <label>Target Department</label>
+        <select id="nfcDept">
+          <option>General Consultation</option>
+          <option>Laboratory & Diagnostics</option>
+          <option>Pharmacy Dispatch</option>
+          <option>Dental Triage</option>
+        </select>
+        <button class="btn" onclick="submitCheckin('NFC_CARD', 'nfcUid', 'nfcName', 'nfcDept')">Simulate NFC Card Tap (1.8s Check-In)</button>
+      </div>
+
+      <!-- Mode 2: Touch Kiosk -->
+      <div id="TOUCH_KIOSK" class="mode-box">
+        <p style="font-size: 13px; color: var(--muted);">Walk-in self-service touchscreen mode for visitors without smart cards or smartphones.</p>
+        <label>Phone Number</label>
+        <input type="text" id="touchPhone" placeholder="+250 788 000 000" value="+250 788 412 900" />
+        <label>Visitor / Patient Full Name</label>
+        <input type="text" id="touchName" placeholder="Enter Full Name" value="Aline Uwase" />
+        <label>Select Department</label>
+        <select id="touchDept">
+          <option>General Consultation</option>
+          <option>Maternity & Pediatrics</option>
+          <option>Ophthalmology</option>
+        </select>
+        <button class="btn" onclick="submitCheckin('TOUCH_KIOSK', 'touchPhone', 'touchName', 'touchDept')">Complete Touch Kiosk Check-In</button>
+      </div>
+
+      <!-- Mode 3: USSD / SMS Shortcode -->
+      <div id="USSD_SMS" class="mode-box">
+        <p style="font-size: 13px; color: var(--muted);">Feature-phone gateway (*250*1#). Queues patient before they even reach the front desk.</p>
+        <label>Caller MSISDN (Basic Phone Number)</label>
+        <input type="text" id="ussdPhone" value="+250 722 901 114" />
+        <label>USSD Session Menu Selection</label>
+        <select id="ussdDept">
+          <option value="General Consultation">Dialed *250*1# — General Consultation</option>
+          <option value="Laboratory & Diagnostics">Dialed *250*2# — Laboratory</option>
+          <option value="Pharmacy Dispatch">Dialed *250*3# — Pharmacy</option>
+        </select>
+        <input type="hidden" id="ussdName" value="USSD Mobile Caller" />
+        <button class="btn btn-secondary" onclick="submitCheckin('USSD_SMS', 'ussdPhone', 'ussdName', 'ussdDept')">Send USSD Session to Local Server</button>
+      </div>
+
+      <!-- Mode 4: Biometric / National ID OCR -->
+      <div id="ID_OCR" class="mode-box">
+        <p style="font-size: 13px; color: var(--muted);">Reads National ID or Insurance Card MRZ barcode via USB optical scanner.</p>
+        <label>Scanned National ID / Insurance Barcode</label>
+        <input type="text" id="ocrId" value="1199880045120981" />
+        <label>OCR Extracted Full Name</label>
+        <input type="text" id="ocrName" value="Eric Mugisha (ID Verified)" />
+        <label>Assigned Department</label>
+        <select id="ocrDept">
+          <option>General Consultation</option>
+          <option>Specialist Clinic</option>
+          <option>Emergency Triage</option>
+        </select>
+        <button class="btn" onclick="submitCheckin('ID_OCR', 'ocrId', 'ocrName', 'ocrDept')">Trigger Optical ID OCR Scan</button>
+      </div>
+    </div>
+
+    <!-- Right Column: Live Triage Queue & Local Server Backup Audit -->
+    <div class="panel">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>Live Paperless Triage Queue</h3>
+        <button class="btn btn-outline" onclick="callNextPatient()">Call Next Ticket</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Ticket</th>
+            <th>Patient / Visitor</th>
+            <th>Channel</th>
+            <th>Department</th>
+          </tr>
+        </thead>
+        <tbody id="queueTable"></tbody>
+      </table>
+
+      <h3 style="margin-top: 24px;">On-Premise Auto-Backup Audit Logs (SHA-256)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Trigger Mode</th>
+            <th>Size</th>
+            <th>SHA-256 Integrity Hash</th>
+          </tr>
+        </thead>
+        <tbody id="backupTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    function switchMode(modeId, btn) {
+      document.querySelectorAll('.mode-box').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+      document.getElementById(modeId).classList.add('active');
+      btn.classList.add('active');
+    }
+
+    async function submitCheckin(method, idField, nameField, deptField) {
+      const payload = {
+        method: method,
+        identifier: document.getElementById(idField).value,
+        full_name: document.getElementById(nameField).value,
+        department: document.getElementById(deptField).value
+      };
+      await fetch('/api/v1/checkin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      refreshDashboard();
+    }
+
+    async function callNextPatient() {
+      await fetch('/api/v1/queue/call-next', { method: 'POST' });
+      refreshDashboard();
+    }
+
+    async function runBackup(mode) {
+      await fetch('/api/v1/backup/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
+      });
+      refreshDashboard();
+    }
+
+    async function simulateReminder() {
+      await fetch('/api/v1/backup/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'SIMULATE_REMINDER' })
+      });
+      refreshDashboard();
+    }
+
+    async function refreshDashboard() {
+      const res = await fetch('/api/v1/dashboard');
+      const data = await res.json();
+
+      document.getElementById('mSheets').innerText = data.metrics.sheets_saved.toLocaleString();
+      document.getElementById('mTrees').innerText = data.metrics.trees_saved.toFixed(4);
+      document.getElementById('mCo2').innerText = data.metrics.co2_kg_saved + ' kg';
+      document.getElementById('mMoney').innerText = '$' + data.metrics.money_saved_usd.toFixed(2);
+
+      const banner = document.getElementById('watchdogBanner');
+      banner.className = 'banner ' + data.watchdog.alert_level;
+      document.getElementById('watchdogText').innerText = data.watchdog.message;
+
+      const qBody = document.getElementById('queueTable');
+      qBody.innerHTML = data.queue.map(r => `
+        <tr>
+          <td><span class="ticket-pill">${r.ticket_number}</span></td>
+          <td>${r.full_name}</td>
+          <td style="color: var(--muted);">${r.checkin_method}</td>
+          <td>${r.department}</td>
+        </tr>
+      `).join('') || '<tr><td colspan="4" style="color: var(--muted);">Queue empty — test a check-in on the left.</td></tr>';
+
+      const bBody = document.getElementById('backupTable');
+      bBody.innerHTML = data.backups.map(b => `
+        <tr>
+          <td>${b.backup_date}</td>
+          <td>${b.trigger_mode}</td>
+          <td>${b.file_size_kb} KB</td>
+          <td style="font-family: monospace; color: var(--accent);">${b.sha256_hash.substring(0, 14)}...</td>
+        </tr>
+      `).join('') || '<tr><td colspan="4" style="color: var(--muted);">No backup executed today yet.</td></tr>';
+    }
+
+    refreshDashboard();
+    setInterval(refreshDashboard, 5000);
+  </script>
+</body>
+</html>
