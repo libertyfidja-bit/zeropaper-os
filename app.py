@@ -3,11 +3,12 @@ import gzip
 import shutil
 import sqlite3
 import hashlib
+import csv
+import io
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, make_response
 from apscheduler.schedulers.background import BackgroundScheduler
 
-# --- [1] IMPORTED LICENSE GUARD AT THE TOP ---
 from license_guard import require_valid_license, verify_license_key, DEFAULT_DEV_KEY
 
 app = Flask(__name__)
@@ -43,6 +44,17 @@ def init_db():
                 status TEXT DEFAULT 'WAITING',
                 sheets_saved INTEGER DEFAULT 3,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS clinical_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticket_number TEXT NOT NULL,
+                diagnosis TEXT,
+                prescription TEXT,
+                lab_notes TEXT,
+                status TEXT DEFAULT 'PENDING_PHARMACY',
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
         conn.execute("""
@@ -85,7 +97,7 @@ def run_hot_backup(trigger_mode="AUTO_FAILSAFE_1800"):
     dst_conn.close()
     src_conn.close()
 
-    # 2. Compress with GZIP (4:1 ratio) and remove raw temporary file
+    # 2. Compress with GZIP and remove raw temp file
     with open(raw_temp_db, "rb") as f_in, gzip.open(gz_backup_path, "wb") as f_out:
         shutil.copyfileobj(f_in, f_out)
     os.remove(raw_temp_db)
@@ -126,7 +138,6 @@ scheduler.start()
 def index():
     return render_template("index.html")
 
-# --- [2] PROTECTED CHECK-IN ROUTE WITH @require_valid_license ---
 @app.route("/api/v1/checkin", methods=["POST"])
 @require_valid_license
 def unified_checkin():
@@ -219,15 +230,13 @@ def trigger_backup_api():
     result = run_hot_backup(trigger_mode=mode)
     return jsonify({"status": "BACKUP_CREATED", "details": result})
 
-# --- [3] ADDED TV DISPLAY & TV STATUS ROUTES RIGHT BEFORE __main__ ---
+# --- TV DISPLAY & STATUS ROUTES ---
 @app.route("/tv-display")
 def tv_display():
-    """Renders the Waiting Room TV Display screen."""
     return render_template("tv_display.html")
 
 @app.route("/api/v1/tv-status", methods=["GET"])
 def tv_status():
-    """Feeds live Now-Serving ticket, Up-Next queue, Eco-Math, and License status to the TV."""
     active_key = os.environ.get("ZEROPAPER_LICENSE_KEY", DEFAULT_DEV_KEY)
     license_info = verify_license_key(active_key)
 
@@ -255,6 +264,94 @@ def tv_status():
         },
         "license": license_info
     })
+
+# --- CLINICAL CONSULTATION & PHARMACY DISPATCH ROUTES ---
+@app.route("/clinical")
+def clinical_portal():
+    return render_template("clinical.html")
+
+@app.route("/api/v1/clinical/waiting-tickets", methods=["GET"])
+def get_waiting_tickets():
+    with get_db() as conn:
+        tickets = [dict(r) for r in conn.execute(
+            "SELECT ticket_number, full_name, department FROM patient_queue WHERE status = 'WAITING' ORDER BY id ASC"
+        ).fetchall()]
+    return jsonify(tickets)
+
+@app.route("/api/v1/clinical/save", methods=["POST"])
+def clinical_save():
+    data = request.json or {}
+    ticket = data.get("ticket_number")
+    diagnosis = data.get("diagnosis")
+    prescription = data.get("prescription")
+    lab_notes = data.get("lab_notes", "None")
+
+    with get_db() as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO clinical_records (ticket_number, diagnosis, prescription, lab_notes, status)
+            VALUES (?, ?, ?, ?, 'PENDING_PHARMACY')
+        """, (ticket, diagnosis, prescription, lab_notes))
+        conn.execute("UPDATE patient_queue SET status = 'IN_CONSULTATION' WHERE ticket_number = ?", (ticket,))
+        conn.commit()
+
+    return jsonify({"status": "SUCCESS", "message": "Prescription transmitted securely to hospital pharmacy."})
+
+@app.route("/api/v1/pharmacy/pending", methods=["GET"])
+def pharmacy_pending():
+    with get_db() as conn:
+        records = [dict(r) for r in conn.execute(
+            "SELECT * FROM clinical_records WHERE status = 'PENDING_PHARMACY' ORDER BY id DESC"
+        ).fetchall()]
+    return jsonify(records)
+
+@app.route("/api/v1/pharmacy/dispense", methods=["POST"])
+def pharmacy_dispense():
+    data = request.json or {}
+    record_id = data.get("record_id")
+    with get_db() as conn:
+        conn.execute("UPDATE clinical_records SET status = 'DISPENSED' WHERE id = ?", (record_id,))
+        conn.commit()
+    return jsonify({"status": "DISPENSED"})
+
+@app.route("/api/v1/export-esg-csv", methods=["GET"])
+def export_esg_csv():
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow(["ZeroPaper OS - Certified ESG Sustainability & Financial Audit Report"])
+    writer.writerow(["Export Generated At", datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+    writer.writerow([])
+
+    with get_db() as conn:
+        totals = conn.execute("""
+            SELECT COUNT(*) as total_visits, COALESCE(SUM(sheets_saved), 0) as total_sheets
+            FROM patient_queue
+        """).fetchone()
+
+    sheets = totals["total_sheets"]
+    trees = round(sheets / 8333.0, 4)
+    co2 = round(sheets * 0.0045, 2)
+    usd = round(sheets * 0.05, 2)
+
+    writer.writerow(["Environmental & Financial Metric", "Accumulated Total"])
+    writer.writerow(["Total Patient Check-Ins", totals["total_visits"]])
+    writer.writerow(["Paper Sheets Eliminated", sheets])
+    writer.writerow(["Full-Grown Trees Preserved", trees])
+    writer.writerow(["CO2 Emissions Prevented (kg)", co2])
+    writer.writerow(["Facility Printing Budget Saved (USD)", f"${usd}"])
+    writer.writerow([])
+
+    writer.writerow(["Visit ID", "Ticket Number", "Patient Name", "Channel", "Department", "Sheets Saved", "Check-In Timestamp"])
+    with get_db() as conn:
+        rows = conn.execute("SELECT id, ticket_number, full_name, checkin_method, department, sheets_saved, created_at FROM patient_queue").fetchall()
+        for r in rows:
+            writer.writerow([r["id"], r["ticket_number"], r["full_name"], r["checkin_method"], r["department"], r["sheets_saved"], r["created_at"]])
+
+    output.seek(0)
+    response = make_response(output.getvalue())
+    response.headers["Content-Disposition"] = "attachment; filename=ZeroPaper_ESG_Sustainability_Report.csv"
+    response.headers["Content-Type"] = "text/csv"
+    return response
 
 if __name__ == "__main__":
     init_db()
