@@ -6,6 +6,7 @@ import hashlib
 import csv
 import io
 from datetime import datetime
+from functools import wraps
 from flask import Flask, render_template, request, jsonify, make_response
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -16,6 +17,7 @@ app = Flask(__name__)
 # Stored strictly on the Client/Hospital's own Local Server or Data Center
 DB_PATH = os.environ.get("HOSPITAL_DB_PATH", "hospital_local_server.db")
 BACKUP_DIR = os.environ.get("HOSPITAL_BACKUP_DIR", "./local_server_backups")
+STAFF_PIN = os.environ.get("HOSPITAL_STAFF_PIN", "2026")
 
 # Global Watchdog State for UI Banner Reminders
 watchdog_state = {
@@ -27,6 +29,16 @@ def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+def require_staff_pin(f):
+    """Decorator to block unauthorized users from accessing admin/clinical write routes without the Staff PIN."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        provided_pin = request.headers.get("X-Staff-PIN") or (request.json or {}).get("staff_pin")
+        if provided_pin != STAFF_PIN:
+            return jsonify({"status": "UNAUTHORIZED", "error": "Invalid or missing Hospital Staff PIN."}), 403
+        return f(*args, **kwargs)
+    return decorated_function
 
 def init_db():
     os.makedirs(BACKUP_DIR, exist_ok=True)
@@ -210,6 +222,7 @@ def dashboard_stats():
     })
 
 @app.route("/api/v1/queue/call-next", methods=["POST"])
+@require_staff_pin
 def call_next():
     with get_db() as conn:
         oldest = conn.execute(
@@ -222,6 +235,7 @@ def call_next():
     return jsonify({"status": "EMPTY"})
 
 @app.route("/api/v1/backup/run", methods=["POST"])
+@require_staff_pin
 def trigger_backup_api():
     mode = (request.json or {}).get("mode", "MANUAL_ADMIN")
     if mode == "SIMULATE_REMINDER":
@@ -279,6 +293,7 @@ def get_waiting_tickets():
     return jsonify(tickets)
 
 @app.route("/api/v1/clinical/save", methods=["POST"])
+@require_staff_pin
 def clinical_save():
     data = request.json or {}
     ticket = data.get("ticket_number")
@@ -305,6 +320,7 @@ def pharmacy_pending():
     return jsonify(records)
 
 @app.route("/api/v1/pharmacy/dispense", methods=["POST"])
+@require_staff_pin
 def pharmacy_dispense():
     data = request.json or {}
     record_id = data.get("record_id")
