@@ -9,6 +9,7 @@ services:
       - TZ=Africa/Kigali
       - HOSPITAL_DB_PATH=/var/hospital_data/hospital_local_server.db
       - HOSPITAL_BACKUP_DIR=/mnt/hospital_backups
+      - ZEROPAPER_LICENSE_KEY=${ZEROPAPER_LICENSE_KEY:-}
     volumes:
       # Mounts the live database to the hospital's local primary disk
       - ./hospital_server_db:/var/hospital_data
