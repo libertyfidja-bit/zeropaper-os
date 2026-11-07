@@ -7,6 +7,9 @@ from datetime import datetime
 from flask import Flask, render_template, request, jsonify
 from apscheduler.schedulers.background import BackgroundScheduler
 
+# --- [1] IMPORTED LICENSE GUARD AT THE TOP ---
+from license_guard import require_valid_license, verify_license_key, DEFAULT_DEV_KEY
+
 app = Flask(__name__)
 
 # Stored strictly on the Client/Hospital's own Local Server or Data Center
@@ -123,7 +126,9 @@ scheduler.start()
 def index():
     return render_template("index.html")
 
+# --- [2] PROTECTED CHECK-IN ROUTE WITH @require_valid_license ---
 @app.route("/api/v1/checkin", methods=["POST"])
+@require_valid_license
 def unified_checkin():
     """Handles all 4 check-in channels: NFC_CARD, TOUCH_KIOSK, USSD_SMS, ID_OCR."""
     data = request.json or {}
@@ -172,7 +177,6 @@ def dashboard_stats():
         ).fetchall()]
 
     sheets = totals["total_sheets"]
-    # Environmental & Financial Math Formulas
     trees_saved = round(sheets / 8333.0, 4)
     co2_kg_saved = round(sheets * 0.0045, 2)
     money_saved_usd = round(sheets * 0.05, 2)
@@ -214,6 +218,43 @@ def trigger_backup_api():
         return jsonify({"status": "REMINDER_TRIGGERED", "watchdog": watchdog_state})
     result = run_hot_backup(trigger_mode=mode)
     return jsonify({"status": "BACKUP_CREATED", "details": result})
+
+# --- [3] ADDED TV DISPLAY & TV STATUS ROUTES RIGHT BEFORE __main__ ---
+@app.route("/tv-display")
+def tv_display():
+    """Renders the Waiting Room TV Display screen."""
+    return render_template("tv_display.html")
+
+@app.route("/api/v1/tv-status", methods=["GET"])
+def tv_status():
+    """Feeds live Now-Serving ticket, Up-Next queue, Eco-Math, and License status to the TV."""
+    active_key = os.environ.get("ZEROPAPER_LICENSE_KEY", DEFAULT_DEV_KEY)
+    license_info = verify_license_key(active_key)
+
+    with get_db() as conn:
+        now_serving = conn.execute(
+            "SELECT ticket_number, full_name, department FROM patient_queue WHERE status = 'SERVED' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+
+        up_next = [dict(r) for r in conn.execute(
+            "SELECT ticket_number, department, checkin_method FROM patient_queue WHERE status = 'WAITING' ORDER BY id ASC LIMIT 5"
+        ).fetchall()]
+
+        totals = conn.execute(
+            "SELECT COALESCE(SUM(sheets_saved), 0) as total_sheets FROM patient_queue"
+        ).fetchone()
+
+    sheets = totals["total_sheets"]
+    return jsonify({
+        "now_serving": dict(now_serving) if now_serving else None,
+        "up_next": up_next,
+        "metrics": {
+            "sheets_saved": sheets,
+            "trees_saved": round(sheets / 8333.0, 4),
+            "co2_kg_saved": round(sheets * 0.0045, 2)
+        },
+        "license": license_info
+    })
 
 if __name__ == "__main__":
     init_db()
