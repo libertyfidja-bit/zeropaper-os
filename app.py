@@ -11,6 +11,7 @@ from flask import Flask, render_template, request, jsonify, make_response
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from license_guard import require_valid_license, verify_license_key, DEFAULT_DEV_KEY
+from notifier import send_payment_receipt
 
 app = Flask(__name__)
 
@@ -181,6 +182,7 @@ def unified_checkin():
 @app.route("/api/v1/kiosk/checkin", methods=["POST"])
 @require_valid_license
 def kiosk_manual_checkin():
+    """Validates or registers manual National ID / Insurance entry at the public Touch Kiosk."""
     data = request.json or {}
     national_id = data.get("national_id", "").strip()
     department = data.get("department", "General Consultation")
@@ -297,11 +299,29 @@ def cashier_lookup(ticket_no):
 
 @app.route("/api/v1/cashier/pay", methods=["POST"])
 def cashier_pay():
+    """Confirms cashier payment, updates status to PAID, and triggers SMS receipt notification."""
     data = request.json or {}
     ticket_no = data.get("ticket_number", "").upper()
+    
     with get_db() as conn:
         conn.execute("UPDATE patient_queue SET payment_status = 'PAID' WHERE ticket_number = ?", (ticket_no,))
+        patient = conn.execute(
+            "SELECT identifier, full_name, department FROM patient_queue WHERE ticket_number = ? LIMIT 1",
+            (ticket_no,)
+        ).fetchone()
         conn.commit()
+
+    if patient and (patient["identifier"].startswith("+") or len(patient["identifier"]) >= 10):
+        try:
+            send_payment_receipt(
+                phone_number=patient["identifier"],
+                patient_name=patient["full_name"],
+                ticket_number=ticket_no,
+                department=patient["department"]
+            )
+        except Exception as e:
+            print(f"Notifier Error: {e}")
+
     return jsonify({"status": "SUCCESS", "ticket_number": ticket_no})
 
 # --- TV DISPLAY ROUTES ---
