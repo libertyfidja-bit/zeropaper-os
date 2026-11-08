@@ -49,11 +49,12 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 identifier TEXT NOT NULL,
                 full_name TEXT NOT NULL,
-                checkin_method TEXT NOT NULL, -- 'NFC_CARD', 'TOUCH_KIOSK', 'USSD_SMS', 'ID_OCR'
+                checkin_method TEXT NOT NULL, -- 'NFC_CARD', 'TOUCH_KIOSK', 'USSD_SMS', 'ID_OCR', 'KIOSK_MANUAL_ID'
                 department TEXT NOT NULL,
                 priority TEXT DEFAULT 'Standard',
                 ticket_number TEXT NOT NULL,
                 status TEXT DEFAULT 'WAITING',
+                payment_status TEXT DEFAULT 'PENDING', -- PENDING or PAID
                 sheets_saved INTEGER DEFAULT 3,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
@@ -101,7 +102,6 @@ def run_hot_backup(trigger_mode="AUTO_FAILSAFE_1800"):
     raw_temp_db = os.path.join(BACKUP_DIR, f"temp_snapshot_{ts}.db")
     gz_backup_path = os.path.join(BACKUP_DIR, f"hospital_db_{today}_{ts}_{trigger_mode}.db.gz")
 
-    # 1. Safe Online Hot-Backup (zero downtime while patients check in)
     src_conn = sqlite3.connect(DB_PATH)
     dst_conn = sqlite3.connect(raw_temp_db)
     with dst_conn:
@@ -109,17 +109,14 @@ def run_hot_backup(trigger_mode="AUTO_FAILSAFE_1800"):
     dst_conn.close()
     src_conn.close()
 
-    # 2. Compress with GZIP and remove raw temp file
     with open(raw_temp_db, "rb") as f_in, gzip.open(gz_backup_path, "wb") as f_out:
         shutil.copyfileobj(f_in, f_out)
     os.remove(raw_temp_db)
 
-    # 3. Compute SHA-256 Checksum & File Size
     with open(gz_backup_path, "rb") as f:
         sha256_hash = hashlib.sha256(f.read()).hexdigest()
     size_kb = round(os.path.getsize(gz_backup_path) / 1024, 2)
 
-    # 4. Record in Hospital's Local Audit Table
     with get_db() as conn:
         conn.execute("""
             INSERT INTO backup_audit_logs (backup_date, trigger_mode, file_path, file_size_kb, sha256_hash)
@@ -139,7 +136,6 @@ def trigger_backup_reminder(level):
         elif level == "URGENT_1730":
             watchdog_state["message"] = "5:30 PM URGENT WARNING: No manual backup detected! Auto-Failsafe Backup will execute at 6:00 PM."
 
-# Start Background Watchdog Scheduler
 scheduler = BackgroundScheduler(daemon=True)
 scheduler.add_job(trigger_backup_reminder, "cron", hour=16, minute=0, args=["REMINDER_1600"])
 scheduler.add_job(trigger_backup_reminder, "cron", hour=17, minute=30, args=["URGENT_1730"])
@@ -153,7 +149,6 @@ def index():
 @app.route("/api/v1/checkin", methods=["POST"])
 @require_valid_license
 def unified_checkin():
-    """Handles all 4 check-in channels: NFC_CARD, TOUCH_KIOSK, USSD_SMS, ID_OCR."""
     data = request.json or {}
     method = data.get("method", "TOUCH_KIOSK")
     identifier = data.get("identifier", "UNKNOWN").strip()
@@ -169,8 +164,8 @@ def unified_checkin():
         ticket_no = f"{prefix}-{count_today:03d}"
 
         cur.execute("""
-            INSERT INTO patient_queue (identifier, full_name, checkin_method, department, priority, ticket_number)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO patient_queue (identifier, full_name, checkin_method, department, priority, ticket_number, payment_status)
+            VALUES (?, ?, ?, ?, ?, ?, 'PENDING')
         """, (identifier, full_name, method, department, priority, ticket_no))
         conn.commit()
 
@@ -179,6 +174,42 @@ def unified_checkin():
         "ticket_number": ticket_no,
         "full_name": full_name,
         "method": method,
+        "department": department,
+        "sheets_saved": 3
+    })
+
+@app.route("/api/v1/kiosk/checkin", methods=["POST"])
+@require_valid_license
+def kiosk_manual_checkin():
+    data = request.json or {}
+    national_id = data.get("national_id", "").strip()
+    department = data.get("department", "General Consultation")
+
+    if len(national_id) < 5:
+        return jsonify({"status": "ERROR", "error": "Invalid National ID format."}), 400
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        patient = cur.execute(
+            "SELECT full_name FROM patient_queue WHERE identifier = ? LIMIT 1", (national_id,)
+        ).fetchone()
+        full_name = patient["full_name"] if patient else f"Citizen ID: {national_id[-4:]}"
+
+        cur.execute("SELECT COUNT(*) FROM patient_queue WHERE date(created_at) = date('now')")
+        count_today = cur.fetchone()[0] + 1
+        prefix = department[0].upper()
+        ticket_no = f"{prefix}-{count_today:03d}"
+
+        cur.execute("""
+            INSERT INTO patient_queue (identifier, full_name, checkin_method, department, priority, ticket_number, payment_status)
+            VALUES (?, ?, 'KIOSK_MANUAL_ID', ?, 'Standard', ?, 'PENDING')
+        """, (national_id, full_name, department, ticket_no))
+        conn.commit()
+
+    return jsonify({
+        "status": "SUCCESS",
+        "ticket_number": ticket_no,
+        "full_name": full_name,
         "department": department,
         "sheets_saved": 3
     })
@@ -200,18 +231,14 @@ def dashboard_stats():
         ).fetchall()]
 
     sheets = totals["total_sheets"]
-    trees_saved = round(sheets / 8333.0, 4)
-    co2_kg_saved = round(sheets * 0.0045, 2)
-    money_saved_usd = round(sheets * 0.05, 2)
-
     return jsonify({
         "queue": queue,
         "metrics": {
             "total_visits": totals["visits"],
             "sheets_saved": sheets,
-            "trees_saved": trees_saved,
-            "co2_kg_saved": co2_kg_saved,
-            "money_saved_usd": money_saved_usd
+            "trees_saved": round(sheets / 8333.0, 4),
+            "co2_kg_saved": round(sheets * 0.0045, 2),
+            "money_saved_usd": round(sheets * 0.05, 2)
         },
         "watchdog": {
             "backed_up_today": is_backed_up_today(),
@@ -244,7 +271,40 @@ def trigger_backup_api():
     result = run_hot_backup(trigger_mode=mode)
     return jsonify({"status": "BACKUP_CREATED", "details": result})
 
-# --- TV DISPLAY & STATUS ROUTES ---
+# --- CASHIER BILLING ROUTES ---
+@app.route("/cashier")
+def cashier_portal():
+    return render_template("cashier.html")
+
+@app.route("/api/v1/cashier/pending", methods=["GET"])
+def cashier_pending():
+    with get_db() as conn:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT ticket_number, full_name, department, payment_status FROM patient_queue WHERE date(created_at) = date('now') ORDER BY id DESC LIMIT 20"
+        ).fetchall()]
+    return jsonify(rows)
+
+@app.route("/api/v1/cashier/lookup/<ticket_no>", methods=["GET"])
+def cashier_lookup(ticket_no):
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT ticket_number, full_name, department, identifier, payment_status FROM patient_queue WHERE ticket_number = ? ORDER BY id DESC LIMIT 1",
+            (ticket_no.upper(),)
+        ).fetchone()
+    if row:
+        return jsonify({"status": "FOUND", "ticket": dict(row)})
+    return jsonify({"status": "NOT_FOUND"})
+
+@app.route("/api/v1/cashier/pay", methods=["POST"])
+def cashier_pay():
+    data = request.json or {}
+    ticket_no = data.get("ticket_number", "").upper()
+    with get_db() as conn:
+        conn.execute("UPDATE patient_queue SET payment_status = 'PAID' WHERE ticket_number = ?", (ticket_no,))
+        conn.commit()
+    return jsonify({"status": "SUCCESS", "ticket_number": ticket_no})
+
+# --- TV DISPLAY ROUTES ---
 @app.route("/tv-display")
 def tv_display():
     return render_template("tv_display.html")
@@ -260,7 +320,7 @@ def tv_status():
         ).fetchone()
 
         up_next = [dict(r) for r in conn.execute(
-            "SELECT ticket_number, department, checkin_method FROM patient_queue WHERE status = 'WAITING' ORDER BY id ASC LIMIT 5"
+            "SELECT ticket_number, department, checkin_method FROM patient_queue WHERE status = 'WAITING' AND payment_status = 'PAID' ORDER BY id ASC LIMIT 5"
         ).fetchall()]
 
         totals = conn.execute(
@@ -279,16 +339,21 @@ def tv_status():
         "license": license_info
     })
 
-# --- CLINICAL CONSULTATION & PHARMACY DISPATCH ROUTES ---
+# --- CLINICAL CONSULTATION & PHARMACY ROUTES ---
 @app.route("/clinical")
 def clinical_portal():
     return render_template("clinical.html")
 
+@app.route("/kiosk")
+def kiosk_touch_screen():
+    return render_template("kiosk.html")
+
 @app.route("/api/v1/clinical/waiting-tickets", methods=["GET"])
 def get_waiting_tickets():
+    """Only fetches waiting tickets where consultation fee payment is verified (PAID)."""
     with get_db() as conn:
         tickets = [dict(r) for r in conn.execute(
-            "SELECT ticket_number, full_name, department FROM patient_queue WHERE status = 'WAITING' ORDER BY id ASC"
+            "SELECT ticket_number, full_name, department FROM patient_queue WHERE status = 'WAITING' AND payment_status = 'PAID' ORDER BY id ASC"
         ).fetchall()]
     return jsonify(tickets)
 
@@ -340,28 +405,17 @@ def export_esg_csv():
 
     with get_db() as conn:
         totals = conn.execute("""
-            SELECT COUNT(*) as total_visits, COALESCE(SUM(sheets_saved), 0) as total_sheets
+            SELECT COUNT(*) as visits, COALESCE(SUM(sheets_saved), 0) as total_sheets
             FROM patient_queue
         """).fetchone()
 
     sheets = totals["total_sheets"]
-    trees = round(sheets / 8333.0, 4)
-    co2 = round(sheets * 0.0045, 2)
-    usd = round(sheets * 0.05, 2)
-
     writer.writerow(["Environmental & Financial Metric", "Accumulated Total"])
     writer.writerow(["Total Patient Check-Ins", totals["total_visits"]])
     writer.writerow(["Paper Sheets Eliminated", sheets])
-    writer.writerow(["Full-Grown Trees Preserved", trees])
-    writer.writerow(["CO2 Emissions Prevented (kg)", co2])
-    writer.writerow(["Facility Printing Budget Saved (USD)", f"${usd}"])
-    writer.writerow([])
-
-    writer.writerow(["Visit ID", "Ticket Number", "Patient Name", "Channel", "Department", "Sheets Saved", "Check-In Timestamp"])
-    with get_db() as conn:
-        rows = conn.execute("SELECT id, ticket_number, full_name, checkin_method, department, sheets_saved, created_at FROM patient_queue").fetchall()
-        for r in rows:
-            writer.writerow([r["id"], r["ticket_number"], r["full_name"], r["checkin_method"], r["department"], r["sheets_saved"], r["created_at"]])
+    writer.writerow(["Full-Grown Trees Preserved", round(sheets / 8333.0, 4)])
+    writer.writerow(["CO2 Emissions Prevented (kg)", round(sheets * 0.0045, 2)])
+    writer.writerow(["Facility Printing Budget Saved (USD)", f"${round(sheets * 0.05, 2)}"])
 
     output.seek(0)
     response = make_response(output.getvalue())
