@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZeroPaper — Patient Self-Service Kiosk</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card: #131c31;
+      --border: #223254;
+      --accent: #10b981;
+      --blue: #3b82f6;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 30px; overflow: hidden; }
+    .kiosk-card { background: var(--card); border: 2px solid var(--border); border-radius: 24px; padding: 40px; width: 100%; max-width: 750px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.6); }
+    h1 { font-size: 36px; margin-bottom: 12px; }
+    p { color: var(--muted); font-size: 18px; margin-bottom: 30px; }
+    .grid-options { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px; }
+    .option-btn { background: var(--bg); color: var(--text); border: 2px solid var(--border); padding: 24px; border-radius: 16px; font-size: 20px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+    .option-btn:hover, .option-btn.selected { border-color: var(--accent); background: rgba(16, 185, 129, 0.1); color: #6ee7b7; }
+    .btn-primary { background: var(--accent); color: #052e16; border: none; padding: 18px; width: 100%; border-radius: 14px; font-size: 20px; font-weight: 800; cursor: pointer; margin-top: 20px; }
+    input[type="text"] { width: 100%; padding: 20px; border-radius: 14px; border: 2px solid var(--border); background: var(--bg); color: white; font-size: 28px; text-align: center; letter-spacing: 2px; margin-bottom: 20px; }
+    .step-view { display: none; }
+    .step-view.active { display: block; }
+    .ticket-display { font-size: 90px; font-weight: 900; color: var(--accent); margin: 20px 0; }
+  </style>
+</head>
+<body>
+
+  <div class="kiosk-card">
+    
+    <!-- STEP 1: Language Selection -->
+    <div id="stepLang" class="step-view active">
+      <h1>Select Your Language</h1>
+      <p>Hitahura Ururimi • Choisissez votre langue</p>
+      <div class="grid-options">
+        <button class="option-btn" onclick="setLanguage('EN')">English</button>
+        <button class="option-btn" onclick="setLanguage('FR')">Français</button>
+        <button class="option-btn" style="grid-column: span 2;" onclick="setLanguage('RW')">Ikinyarwanda</button>
+      </div>
+    </div>
+
+    <!-- STEP 2: Department / Triage Selection -->
+    <div id="stepDept" class="step-view">
+      <h1 id="deptTitle">Select Department</h1>
+      <p id="deptSubtitle">What service do you need today?</p>
+      <div class="grid-options">
+        <button class="option-btn" onclick="setDepartment('General Consultation')">🩺 General Consultation</button>
+        <button class="option-btn" onclick="setDepartment('Laboratory & Diagnostics')">🧪 Laboratory & Tests</button>
+        <button class="option-btn" onclick="setDepartment('Pharmacy Dispatch')">💊 Pharmacy & Refills</button>
+        <button class="option-btn" onclick="setDepartment('Emergency Triage')">🚨 Emergency / Urgent</button>
+      </div>
+    </div>
+
+    <!-- STEP 3: Manual National ID Entry (High-Volume Queue) -->
+    <div id="stepId" class="step-view">
+      <h1>Enter National ID</h1>
+      <p>Type your 16-digit National ID or Insurance Number</p>
+      <input type="text" id="manualIdInput" placeholder="1 1998 8 0000000 1 23" maxlength="16" />
+      <button class="btn-primary" onclick="submitKioskCheckin()">Generate Digital Queue Ticket</button>
+    </div>
+
+    <!-- STEP 4: Success Ticket Screen -->
+    <div id="stepSuccess" class="step-view">
+      <h1 style="color: var(--accent);">Check-In Successful!</h1>
+      <p>Please take a seat in the waiting area. Your ticket is:</p>
+      <div id="successTicket" class="ticket-display">G-000</div>
+      <p id="successDept" style="font-size: 20px; color: #93c5fd; font-weight: 600;"></p>
+      <button class="btn-primary" style="background: var(--blue); color: white;" onclick="resetKiosk()">Done / Next Patient</button>
+    </div>
+
+  </div>
+
+  <script>
+    let kioskData = { language: "EN", department: "General Consultation", national_id: "" };
+
+    function setLanguage(lang) {
+      kioskData.language = lang;
+      document.getElementById('stepLang').classList.remove('active');
+      document.getElementById('stepDept').classList.add('active');
+    }
+
+    function setDepartment(dept) {
+      kioskData.department = dept;
+      document.getElementById('stepDept').classList.remove('active');
+      document.getElementById('stepId').classList.add('active');
+    }
+
+    async function submitKioskCheckin() {
+      const idVal = document.getElementById('manualIdInput').value.trim();
+      if (idVal.length < 5) {
+        alert("Please enter a valid National ID or Insurance number.");
+        return;
+      }
+      kioskData.national_id = idVal;
+
+      try {
+        const res = await fetch('/api/v1/kiosk/checkin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(kioskData)
+        });
+        const result = await res.json();
+        if (result.status === 'SUCCESS') {
+          document.getElementById('successTicket').innerText = result.ticket_number;
+          document.getElementById('successDept').innerText = result.department;
+          document.getElementById('stepId').classList.remove('active');
+          document.getElementById('stepSuccess').classList.add('active');
+        } else {
+          alert(result.error || "Check-in failed.");
+        }
+      } catch (err) {
+        alert("Network error connecting to local hospital server.");
+      }
+    }
+
+    function resetKiosk() {
+      document.getElementById('manualIdInput').value = '';
+      document.getElementById('stepSuccess').classList.remove('active');
+      document.getElementById('stepLang').classList.add('active');
+    }
+  </script>
+</body>
+</html>
