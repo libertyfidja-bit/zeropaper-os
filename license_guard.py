@@ -7,10 +7,23 @@ from datetime import datetime, timedelta
 from functools import wraps
 from flask import jsonify
 
-# Keep this master signing secret private in your own generator environment
-MASTER_SIGNING_SECRET = os.environ.get(
-    "ZEROPAPER_MASTER_SECRET", "zp_live_99a8f7e6d5c4b3a210_master_secret_key"
-)
+# SECURITY: The master signing secret MUST be set via environment variable.
+# Never hardcode this value in source code — anyone with the repo can forge license keys.
+# Generate a strong secret with: python -c "import secrets; print(secrets.token_hex(32))"
+_raw_secret = os.environ.get("ZEROPAPER_MASTER_SECRET", "")
+if not _raw_secret:
+    import warnings
+    warnings.warn(
+        "ZEROPAPER_MASTER_SECRET is not set. Using a random ephemeral secret — "
+        "license keys generated now will NOT be verifiable after restart. "
+        "Set ZEROPAPER_MASTER_SECRET in your environment for production.",
+        RuntimeWarning,
+        stacklevel=2,
+    )
+    import secrets as _secrets
+    _raw_secret = _secrets.token_hex(32)
+
+MASTER_SIGNING_SECRET = _raw_secret
 
 def generate_license_key(facility_id: str, expires_yyyy_mm_dd: str, plan: str = "ENTERPRISE") -> str:
     """Run this locally to issue a new signed license key for a paying hospital."""
