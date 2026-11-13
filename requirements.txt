@@ -3,3 +3,4 @@ APScheduler==3.10.4
 gunicorn==22.0.0
 pyserial==3.5
 cryptography>=40.0.0
+requests==2.31.0
