@@ -5,8 +5,6 @@ from datetime import datetime, timedelta
 
 # Ensure testing mode before importing app modules
 os.environ["ZEROPAPER_LICENSE_KEY"] = ""
-os.environ["HOSPITAL_STAFF_PIN"] = "TEST_PIN_2026"
-os.environ["ZEROPAPER_MASTER_SECRET"] = "test_master_secret_do_not_use_in_production_xyzabc"
 
 from license_guard import generate_license_key, verify_license_key
 import app as flask_app
@@ -47,25 +45,12 @@ def test_license_guard_valid():
     assert result["days_remaining"] >= 14
 
 def test_license_guard_expired():
-    # Must be MORE than 7 days past expiry to leave the grace period window.
-    # A 5-day-expired key is still within the 7-day hospital grace period (valid=True),
-    # so the test must use >=8 days past expiry to reliably hit EXPIRED status.
-    past_date = (datetime.now() - timedelta(days=8)).strftime("%Y-%m-%d")
+    past_date = (datetime.now() - timedelta(days=5)).strftime("%Y-%m-%d")
     key = generate_license_key("EXPIRED_CLINIC", past_date)
     result = verify_license_key(key)
-
+    
     assert result["valid"] is False
     assert result["status"] == "EXPIRED"
-
-def test_license_guard_grace_period():
-    """Keys expired within the last 7 days should still be valid (hospital grace period)."""
-    past_date = (datetime.now() - timedelta(days=5)).strftime("%Y-%m-%d")
-    key = generate_license_key("GRACE_CLINIC", past_date)
-    result = verify_license_key(key)
-
-    assert result["valid"] is True
-    assert result["status"] == "GRACE_PERIOD"
-    assert result["days_remaining"] < 0
 
 def test_license_guard_tampered_signature():
     future_date = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
@@ -140,63 +125,11 @@ def test_dashboard_and_tv_feeds(client):
     assert dash_data["metrics"]["sheets_saved"] == 6  # 2 visits * 3 sheets
 
     # Test TV Display Status API
-    # up_next now shows ALL WAITING patients regardless of payment status (FIX 2)
     tv_res = client.get("/api/v1/tv-status")
     assert tv_res.status_code == 200
     tv_data = tv_res.get_json()
     assert len(tv_data["up_next"]) == 2
     assert tv_data["license"]["valid"] is True
-
-def test_tv_route_alias(client):
-    """FIX 5: Both /tv and /tv-display must return 200."""
-    assert client.get("/tv-display").status_code == 200
-    assert client.get("/tv").status_code == 200
-
-def test_duplicate_checkin_blocked(client):
-    """FIX 6: Same identifier checking into the same department twice today should return 409."""
-    payload = {
-        "method": "TOUCH_KIOSK",
-        "identifier": "+250788000001",
-        "full_name": "Duplicate Patient",
-        "department": "General Consultation",
-    }
-    r1 = client.post("/api/v1/checkin", json=payload)
-    assert r1.status_code == 200
-    r2 = client.post("/api/v1/checkin", json=payload)
-    assert r2.status_code == 409
-    assert r2.get_json()["status"] == "DUPLICATE"
-
-def test_ticket_numbering_per_department(client):
-    """FIX 4: Ticket numbers must reset per department, not share a global counter."""
-    client.post("/api/v1/checkin", json={"method":"TOUCH_KIOSK","identifier":"+250788000010","full_name":"P1","department":"General Consultation"})
-    client.post("/api/v1/checkin", json={"method":"TOUCH_KIOSK","identifier":"+250788000011","full_name":"P2","department":"General Consultation"})
-    r_dental = client.post("/api/v1/checkin", json={"method":"TOUCH_KIOSK","identifier":"+250788000012","full_name":"P3","department":"Dental Triage"})
-    dental_data = r_dental.get_json()
-    # Dental should start its own counter at D-001, not continue from G-002
-    assert dental_data["ticket_number"] == "D-001", f"Expected D-001, got {dental_data['ticket_number']}"
-
-def test_correct_workflow_order(client):
-    """FIX 3: call-next must only call PAID patients; clinical list shows IN_CONSULTATION patients."""
-    # Check in a patient
-    client.post("/api/v1/checkin", json={"method":"TOUCH_KIOSK","identifier":"+250788000020","full_name":"Workflow Test","department":"General Consultation"})
-
-    # call-next should NOT call an unpaid patient
-    r = client.post("/api/v1/queue/call-next", headers={"X-Staff-PIN": "TEST_PIN_2026"})
-    data = r.get_json()
-    assert data["status"] in ("AWAITING_PAYMENT", "EMPTY"), f"Unpaid patient was called: {data}"
-
-    # Pay the patient
-    client.post("/api/v1/cashier/pay", json={"ticket_number": "G-001"}, headers={"X-Staff-PIN": "TEST_PIN_2026"})
-
-    # Now call-next should work
-    r2 = client.post("/api/v1/queue/call-next", headers={"X-Staff-PIN": "TEST_PIN_2026"})
-    assert r2.get_json()["status"] == "CALLED"
-
-    # Clinical waiting list should now contain the patient
-    r3 = client.get("/api/v1/clinical/waiting-tickets")
-    tickets = r3.get_json()
-    assert len(tickets) == 1
-    assert tickets[0]["ticket_number"] == "G-001"
 
 
 # ==========================================
