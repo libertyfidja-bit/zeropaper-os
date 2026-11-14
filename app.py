@@ -294,16 +294,94 @@ def patient_lookup(identifier):
         "category": "New Walk-in Patient"
     })
 
+@app.route("/api/v1/nida/lookup", methods=["POST"])
+def nida_lookup():
+    """
+    NIDA (National Identification Database) lookup for Rwanda National IDs.
+    Accepts a 16-digit Rwanda National ID and returns citizen identity data.
+    In production, wire NIDA_API_URL + NIDA_API_KEY env vars to the real NIDA REST API.
+    Falls back to local patient history, then returns a structured placeholder so the
+    kiosk can still display something useful even without live NIDA connectivity.
+    """
+    data = request.json or {}
+    national_id = data.get("national_id", "").strip().replace(" ", "")
+
+    if not national_id:
+        return jsonify({"status": "ERROR", "error": "No ID provided."}), 400
+
+    # --- Try live NIDA API if credentials are configured ---
+    nida_url = os.environ.get("NIDA_API_URL", "")
+    nida_key = os.environ.get("NIDA_API_KEY", "")
+    if nida_url and nida_key:
+        try:
+            import requests as _req
+            resp = _req.post(
+                nida_url,
+                json={"id_number": national_id},
+                headers={"Authorization": f"Bearer {nida_key}", "Content-Type": "application/json"},
+                timeout=5
+            )
+            if resp.status_code == 200:
+                nida_data = resp.json()
+                return jsonify({
+                    "status": "FOUND",
+                    "source": "NIDA_LIVE",
+                    "full_name": nida_data.get("full_name") or nida_data.get("name", ""),
+                    "dob": nida_data.get("date_of_birth", ""),
+                    "gender": nida_data.get("gender", ""),
+                    "nationality": nida_data.get("nationality", "Rwandan"),
+                    "photo_base64": nida_data.get("photo", ""),
+                    "id_number": national_id
+                })
+        except Exception:
+            pass  # Fall through to local lookup
+
+    # --- Try local patient history ---
+    with get_db() as conn:
+        cur = conn.cursor()
+        sql = ("SELECT full_name FROM patient_queue WHERE identifier = %s ORDER BY id DESC LIMIT 1"
+               if DATABASE_URL else
+               "SELECT full_name FROM patient_queue WHERE identifier = ? ORDER BY id DESC LIMIT 1")
+        cur.execute(sql, (national_id,))
+        row = cur.fetchone()
+        cur.close()
+
+    if row and row["full_name"] and not row["full_name"].startswith("Citizen ID"):
+        return jsonify({
+            "status": "FOUND",
+            "source": "LOCAL_HISTORY",
+            "full_name": row["full_name"],
+            "dob": "",
+            "gender": "",
+            "nationality": "",
+            "photo_base64": "",
+            "id_number": national_id,
+            "note": "Retrieved from local patient history. Connect NIDA_API_URL for live identity verification."
+        })
+
+    # --- NIDA not configured: return structured placeholder ---
+    return jsonify({
+        "status": "NOT_FOUND",
+        "source": "NO_NIDA",
+        "full_name": "",
+        "id_number": national_id,
+        "note": "NIDA API not configured. Set NIDA_API_URL and NIDA_API_KEY environment variables to enable live identity lookup."
+    })
+
+
 @app.route("/api/v1/kiosk/checkin", methods=["POST"])
 @require_valid_license
 def kiosk_manual_checkin():
     """Validates or registers manual National ID / Insurance entry at the public Touch Kiosk."""
     data = request.json or {}
-    national_id = data.get("national_id", "").strip()
+    # Accept both 'national_id' and 'identifier' for compatibility with both endpoints
+    national_id = (data.get("national_id") or data.get("identifier") or "").strip()
     department = data.get("department", "General Consultation")
+    # Accept full_name if passed (e.g. from NIDA lookup result)
+    provided_name = (data.get("full_name") or "").strip()
 
     if len(national_id) < 5:
-        return jsonify({"status": "ERROR", "error": "Invalid National ID format."}), 400
+        return jsonify({"status": "ERROR", "error": "ID too short — please enter a valid National ID or Insurance number."}), 400
 
     with get_db() as conn:
         cur = conn.cursor()
@@ -328,7 +406,10 @@ def kiosk_manual_checkin():
         dept_count_today = cur.fetchone()[0] + 1
         prefix = department[0].upper()
         ticket_no = f"{prefix}-{dept_count_today:03d}"
-        full_name = patient["full_name"] if patient else f"Citizen ID: {national_id[-4:]}"
+        # Priority: NIDA-provided name > local history > fallback placeholder
+        full_name = (provided_name or
+                     (patient["full_name"] if patient and not patient["full_name"].startswith("Citizen ID") else None) or
+                     f"Citizen ID: {national_id[-4:]}")
 
         sql_insert = ("INSERT INTO patient_queue (identifier, full_name, checkin_method, department, priority, ticket_number, payment_status) VALUES (%s, %s, 'KIOSK_MANUAL_ID', %s, 'Standard', %s, 'PENDING')"
                       if DATABASE_URL else

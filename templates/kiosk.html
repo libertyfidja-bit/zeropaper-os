@@ -5,43 +5,62 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ZeroPaper — Patient Self-Service Kiosk</title>
   <style>
-    :root { --bg:#090d16;--card:#131c31;--border:#223254;--accent:#10b981;--blue:#3b82f6;--text:#f8fafc;--muted:#94a3b8; }
+    :root{--bg:#090d16;--card:#131c31;--border:#223254;--accent:#10b981;--blue:#3b82f6;--text:#f8fafc;--muted:#94a3b8;--warn:#f59e0b;--danger:#ef4444;}
     *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif;}
     body{background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:24px;}
-    .kiosk-card{background:var(--card);border:2px solid var(--border);border-radius:24px;padding:36px;width:100%;max-width:780px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.6);}
-    h1{font-size:30px;margin-bottom:10px;}
-    p.sub{color:var(--muted);font-size:17px;margin-bottom:28px;}
-    .grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:16px;}
-    .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;}
-    .option-btn{background:var(--bg);color:var(--text);border:2px solid var(--border);padding:22px 14px;border-radius:14px;font-size:17px;font-weight:700;cursor:pointer;transition:all 0.2s;}
+    .kiosk-card{background:var(--card);border:2px solid var(--border);border-radius:24px;padding:36px;width:100%;max-width:800px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.6);}
+    h1{font-size:28px;margin-bottom:10px;}
+    p.sub{color:var(--muted);font-size:16px;margin-bottom:26px;}
+    .grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:14px;}
+    .option-btn{background:var(--bg);color:var(--text);border:2px solid var(--border);padding:20px 12px;border-radius:14px;font-size:16px;font-weight:700;cursor:pointer;transition:all 0.2s;}
     .option-btn:hover,.option-btn.selected{border-color:var(--accent);background:rgba(16,185,129,0.1);color:#6ee7b7;}
-    .btn-primary{background:var(--accent);color:#052e16;border:none;padding:16px;width:100%;border-radius:12px;font-size:18px;font-weight:800;cursor:pointer;margin-top:16px;}
+    .btn-primary{background:var(--accent);color:#052e16;border:none;padding:16px;width:100%;border-radius:12px;font-size:18px;font-weight:800;cursor:pointer;margin-top:14px;}
     .btn-secondary{background:var(--blue);color:white;border:none;padding:16px;width:100%;border-radius:12px;font-size:18px;font-weight:800;cursor:pointer;margin-top:12px;}
-    .btn-back{background:transparent;color:var(--muted);border:1px solid var(--border);padding:10px 20px;border-radius:8px;font-size:14px;cursor:pointer;margin-top:16px;}
-    input[type="text"]{width:100%;padding:18px;border-radius:12px;border:2px solid var(--border);background:var(--bg);color:white;font-size:26px;text-align:center;letter-spacing:3px;margin-bottom:16px;}
+    .btn-back{background:transparent;color:var(--muted);border:1px solid var(--border);padding:10px 20px;border-radius:8px;font-size:14px;cursor:pointer;margin-top:14px;}
+    input[type="text"],input[type="tel"]{width:100%;padding:18px;border-radius:12px;border:2px solid var(--border);background:var(--bg);color:white;font-size:24px;text-align:center;letter-spacing:2px;margin-bottom:12px;transition:border-color 0.2s;}
+    input[type="text"]:focus,input[type="tel"]:focus{outline:none;border-color:var(--blue);}
+    input.valid{border-color:var(--accent)!important;}
+    input.invalid{border-color:var(--danger)!important;}
     .step-view{display:none;}
     .step-view.active{display:block;}
-    .ticket-display{font-size:100px;font-weight:900;color:var(--accent);margin:16px 0;line-height:1;}
-    /* Tabs for check-in method */
-    .method-tabs{display:flex;gap:8px;margin-bottom:20px;justify-content:center;}
+    .ticket-display{font-size:100px;font-weight:900;color:var(--accent);margin:14px 0;line-height:1;}
+    /* Method tabs */
+    .method-tabs{display:flex;gap:8px;margin-bottom:18px;justify-content:center;}
     .method-tab{background:var(--bg);color:var(--muted);border:1px solid var(--border);padding:10px 18px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;}
     .method-tab.active{background:var(--blue);color:white;border-color:var(--blue);}
     .method-pane{display:none;}
     .method-pane.active{display:block;}
     /* NFC */
-    .nfc-anim{padding:24px;}
-    .nfc-ring{width:80px;height:80px;border-radius:50%;border:4px solid var(--blue);margin:0 auto 14px;animation:nfcPulse 1.4s ease-in-out infinite;}
+    .nfc-anim{padding:20px;}
+    .nfc-ring{width:80px;height:80px;border-radius:50%;border:4px solid var(--blue);margin:0 auto 12px;animation:nfcPulse 1.4s ease-in-out infinite;display:flex;align-items:center;justify-content:center;font-size:30px;}
     @keyframes nfcPulse{0%,100%{box-shadow:0 0 0 0 rgba(59,130,246,0.5);}50%{box-shadow:0 0 0 20px rgba(59,130,246,0);}}
     /* OCR */
-    .ocr-area{border:2px dashed var(--border);border-radius:10px;padding:20px;cursor:pointer;color:var(--muted);}
+    .ocr-area{border:2px dashed var(--border);border-radius:10px;padding:20px;cursor:pointer;color:var(--muted);transition:all 0.2s;}
     .ocr-area:hover{border-color:var(--accent);color:var(--accent);}
     #ocrPreviewKiosk{max-width:100%;border-radius:8px;margin-top:10px;display:none;}
-    .owner-box{background:rgba(16,185,129,0.1);border:1px solid var(--accent);padding:14px;border-radius:10px;text-align:left;margin-bottom:16px;display:none;}
-    .steps-indicator{display:flex;gap:6px;justify-content:center;margin-bottom:20px;}
-    .step-dot{width:10px;height:10px;border-radius:50%;background:var(--border);}
+    /* NIDA identity card */
+    .identity-card{background:linear-gradient(135deg,rgba(16,185,129,0.1),rgba(59,130,246,0.1));border:2px solid var(--accent);border-radius:16px;padding:20px;margin:14px 0;text-align:left;display:none;}
+    .identity-card .id-header{display:flex;align-items:center;gap:16px;margin-bottom:14px;}
+    .identity-card .id-photo{width:72px;height:88px;border-radius:8px;object-fit:cover;border:2px solid var(--accent);background:var(--border);display:flex;align-items:center;justify-content:center;font-size:36px;flex-shrink:0;}
+    .identity-card .id-photo img{width:100%;height:100%;border-radius:6px;object-fit:cover;}
+    .identity-card .id-badge{background:var(--accent);color:#052e16;font-size:11px;font-weight:800;padding:3px 8px;border-radius:4px;margin-bottom:6px;display:inline-block;}
+    .identity-card h3{font-size:22px;font-weight:800;color:#6ee7b7;margin-bottom:4px;}
+    .identity-card .id-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;}
+    .identity-card .id-field label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:2px;}
+    .identity-card .id-field span{color:var(--text);font-weight:600;}
+    .identity-card .source-note{font-size:11px;color:var(--muted);margin-top:10px;padding-top:10px;border-top:1px solid var(--border);}
+    /* Spinner */
+    .spinner{display:none;margin:12px auto;width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin 0.8s linear infinite;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+    /* Steps indicator */
+    .steps-indicator{display:flex;gap:6px;justify-content:center;margin-bottom:18px;}
+    .step-dot{width:10px;height:10px;border-radius:50%;background:var(--border);transition:background 0.2s;}
     .step-dot.done{background:var(--accent);}
     .step-dot.active{background:var(--blue);}
-    #errorMsg{color:#fca5a5;font-size:14px;margin-top:8px;display:none;}
+    #errorMsg{color:#fca5a5;font-size:14px;margin-top:10px;display:none;padding:10px;background:rgba(239,68,68,0.1);border-radius:8px;border:1px solid var(--danger);}
+    .lookup-status{font-size:13px;color:var(--muted);min-height:18px;margin-top:4px;}
+    .lookup-status.ok{color:var(--accent);}
+    .lookup-status.err{color:var(--danger);}
   </style>
 </head>
 <body>
@@ -50,12 +69,12 @@
   <!-- STEP 1: Language -->
   <div id="stepLang" class="step-view active">
     <h1>🏥 Welcome to ZeroPaper Health</h1>
-    <p class="sub">Select your language to begin • Hitahura Ururimi • Choisissez votre langue</p>
+    <p class="sub">Select your language to begin<br><span style="font-size:14px;">Hitahura Ururimi • Choisissez votre langue</span></p>
     <div class="grid-2">
       <button class="option-btn" onclick="setLanguage('EN')">🇬🇧 English</button>
       <button class="option-btn" onclick="setLanguage('FR')">🇫🇷 Français</button>
     </div>
-    <button class="option-btn" style="width:100%;font-size:18px;" onclick="setLanguage('RW')">🇷🇼 Ikinyarwanda</button>
+    <button class="option-btn" style="width:100%;font-size:18px;padding:22px;" onclick="setLanguage('RW')">🇷🇼 Ikinyarwanda</button>
   </div>
 
   <!-- STEP 2: Department -->
@@ -75,14 +94,14 @@
     <button class="btn-back" onclick="goTo('stepLang')">← Back</button>
   </div>
 
-  <!-- STEP 3: Check-In Method -->
+  <!-- STEP 3: Identify -->
   <div id="stepId" class="step-view">
     <div class="steps-indicator">
       <div class="step-dot done"></div><div class="step-dot done"></div>
       <div class="step-dot active"></div><div class="step-dot"></div>
     </div>
     <h1 id="idTitle">Identify Yourself</h1>
-    <p class="sub">Choose how to check in</p>
+    <p class="sub" id="idSubtitle">Choose how to check in</p>
 
     <div class="method-tabs">
       <button class="method-tab active" onclick="switchMethod('national-id',this)">🪪 National ID</button>
@@ -90,43 +109,71 @@
       <button class="method-tab" onclick="switchMethod('ocr',this)">📷 ID Scanner</button>
     </div>
 
-    <!-- National ID manual entry -->
+    <!-- National ID method -->
     <div id="method-national-id" class="method-pane active">
-      <p style="color:var(--muted);font-size:14px;margin-bottom:12px;">Type your 16-digit National ID or Insurance Number</p>
-      <input type="text" id="manualIdInput" placeholder="1199880000001 23" maxlength="20"
-             oninput="lookupOwner(this.value)" />
-      <div id="ownerPreviewBox" class="owner-box">
-        <p style="color:var(--muted);font-size:13px;margin-bottom:4px;">Patient Profile Found:</p>
-        <p id="previewName" style="font-size:19px;font-weight:700;color:#6ee7b7;"></p>
+      <p id="idInputLabel" style="color:var(--muted);font-size:14px;margin-bottom:10px;">Type your 16-digit Rwanda National ID or passport number</p>
+      <input type="tel" id="manualIdInput" placeholder="1 2006 8 0236 2400 44"
+             maxlength="20" oninput="onIdInput(this.value)" autocomplete="off" />
+      <div class="lookup-status" id="lookupStatus"></div>
+      <div class="spinner" id="lookupSpinner"></div>
+
+      <!-- NIDA Identity Card -->
+      <div class="identity-card" id="identityCard">
+        <div class="id-header">
+          <div class="id-photo" id="idPhotoBox">👤</div>
+          <div>
+            <span class="id-badge" id="idSourceBadge">NIDA VERIFIED</span>
+            <h3 id="idFullName">—</h3>
+            <div style="font-size:13px;color:var(--muted);" id="idNumber">—</div>
+          </div>
+        </div>
+        <div class="id-fields">
+          <div class="id-field"><label>Date of Birth</label><span id="idDob">—</span></div>
+          <div class="id-field"><label>Gender</label><span id="idGender">—</span></div>
+          <div class="id-field"><label>Nationality</label><span id="idNationality">—</span></div>
+          <div class="id-field"><label>ID Number</label><span id="idNum">—</span></div>
+        </div>
+        <div class="source-note" id="idSourceNote"></div>
       </div>
+
+      <!-- Manual name entry when NIDA not available -->
+      <div id="manualNameArea" style="display:none;margin-top:10px;">
+        <p style="color:var(--warn);font-size:13px;margin-bottom:8px;">⚠️ NIDA lookup unavailable. Please type your full name:</p>
+        <input type="text" id="manualNameFallback" placeholder="Your full name..." style="font-size:18px;letter-spacing:0;" />
+      </div>
+
       <button id="genTicketBtn" class="btn-primary" onclick="submitKioskCheckin('MANUAL_ID')" style="display:none;">
-        ✅ Generate Queue Ticket
+        ✅ Confirm & Generate Queue Ticket
       </button>
     </div>
 
-    <!-- NFC tap -->
+    <!-- NFC method -->
     <div id="method-nfc" class="method-pane">
       <div class="nfc-anim">
-        <div class="nfc-ring"></div>
+        <div class="nfc-ring">📡</div>
         <p style="font-size:16px;font-weight:700;color:var(--blue);">Hold NFC Card or Wristband near reader</p>
-        <p style="color:var(--muted);font-size:13px;margin-top:8px;">Card data will auto-fill. Or enter manually below.</p>
+        <p style="color:var(--muted);font-size:13px;margin-top:8px;">Card data will auto-fill when detected. Or enter manually:</p>
       </div>
-      <input type="text" id="nfcCardId" placeholder="NFC Card ID (auto-filled)" />
+      <input type="text" id="nfcCardId" placeholder="NFC Card ID (auto-filled or manual)" style="font-size:18px;" />
+      <input type="text" id="nfcPatientName" placeholder="Patient name (if known)" style="font-size:18px;letter-spacing:0;" />
       <button class="btn-secondary" onclick="submitKioskCheckin('NFC_CARD')">💳 Register with NFC Card</button>
     </div>
 
-    <!-- OCR scan -->
+    <!-- OCR method -->
     <div id="method-ocr" class="method-pane">
       <div class="ocr-area" onclick="document.getElementById('kioskOcrFile').click()">
-        <div style="font-size:36px;">📷</div>
+        <div style="font-size:40px;">📷</div>
         <p style="font-weight:700;margin-top:8px;">Tap to capture or upload National ID photo</p>
-        <p style="font-size:12px;margin-top:4px;">Front side of Rwanda National ID</p>
+        <p style="font-size:12px;margin-top:4px;">Front side of Rwanda National ID card</p>
         <img id="ocrPreviewKiosk" />
       </div>
-      <input type="file" id="kioskOcrFile" accept="image/*" capture="environment" onchange="handleKioskOcr(this)" style="display:none;" />
-      <div id="ocrExtracted" style="display:none;margin-top:12px;">
-        <input type="text" id="ocrKioskName" placeholder="Name from ID..." style="margin-bottom:12px;" />
-        <input type="text" id="ocrKioskId" placeholder="ID number from scan..." />
+      <input type="file" id="kioskOcrFile" accept="image/*" capture="environment"
+             onchange="handleKioskOcr(this)" style="display:none;" />
+      <div id="ocrExtracted" style="display:none;margin-top:14px;text-align:left;">
+        <label style="color:var(--muted);font-size:13px;">Name from ID</label>
+        <input type="text" id="ocrKioskName" placeholder="Extracted name..." style="font-size:18px;letter-spacing:0;margin-bottom:10px;" />
+        <label style="color:var(--muted);font-size:13px;">ID Number from scan</label>
+        <input type="text" id="ocrKioskId" placeholder="Extracted ID number..." style="font-size:18px;" />
         <button class="btn-primary" onclick="submitKioskCheckin('ID_OCR')">✅ Confirm & Get Ticket</button>
       </div>
     </div>
@@ -141,19 +188,30 @@
       <div class="step-dot done"></div><div class="step-dot done"></div>
       <div class="step-dot done"></div><div class="step-dot active"></div>
     </div>
-    <h1 style="color:var(--accent);">✅ Check-In Successful!</h1>
+    <div style="font-size:60px;margin-bottom:12px;">🎉</div>
+    <h1 style="color:var(--accent);">Check-In Successful!</h1>
     <p class="sub">Please take a seat. Your queue ticket:</p>
     <div id="successTicket" class="ticket-display">G-000</div>
-    <p id="successDept" style="font-size:19px;color:#93c5fd;font-weight:600;margin-bottom:8px;"></p>
-    <p id="successName" style="font-size:16px;color:var(--muted);"></p>
-    <p style="margin-top:16px;font-size:14px;color:var(--muted);">Please go to the cashier to complete payment before seeing the doctor.</p>
-    <button class="btn-secondary" onclick="resetKiosk()" style="margin-top:20px;">Done — Next Patient</button>
+    <p id="successDept" style="font-size:19px;color:#93c5fd;font-weight:700;margin-bottom:6px;"></p>
+    <p id="successName" style="font-size:16px;color:var(--muted);margin-bottom:16px;"></p>
+    <div style="background:rgba(245,158,11,0.1);border:1px solid var(--warn);border-radius:10px;padding:14px;font-size:14px;color:#fcd34d;margin-bottom:16px;">
+      💵 Please proceed to the <strong>Cashier</strong> to complete payment before seeing the doctor.
+    </div>
+    <button class="btn-secondary" onclick="resetKiosk()">Done — Next Patient ➜</button>
   </div>
 
 </div>
 
 <script>
-  let kioskData = { language: 'EN', department: '', identifier: '', full_name: '' };
+  let kioskData = { language:'EN', department:'', identifier:'', full_name:'' };
+  let nidaResult = null;
+  let lookupTimer = null;
+
+  const labels = {
+    EN: { dept:'Select Department', deptSub:'What service do you need today?', id:'Identify Yourself', idSub:'Choose how to check in', idInput:'Type your 16-digit Rwanda National ID or passport number' },
+    FR: { dept:'Sélectionner le service', deptSub:'Quel service avez-vous besoin?', id:'Identifiez-vous', idSub:'Choisissez comment vous enregistrer', idInput:'Entrez votre numéro de carte d\'identité nationale (16 chiffres)' },
+    RW: { dept:'Hitamo Serivisi', deptSub:'Ni serivisi izihe ukeneye uyu munsi?', id:'Iyerekane', idSub:'Hitamo uburyo bwo kwiyandikisha', idInput:'Injiza nimero y\'indangamuntu yawe (imibare 16)' }
+  };
 
   function goTo(stepId) {
     document.querySelectorAll('.step-view').forEach(s => s.classList.remove('active'));
@@ -162,15 +220,12 @@
 
   function setLanguage(lang) {
     kioskData.language = lang;
-    const labels = {
-      EN: { dept: 'Select Department', deptSub: 'What service do you need today?', id: 'Identify Yourself' },
-      FR: { dept: 'Sélectionner le service', deptSub: 'Quel service avez-vous besoin?', id: 'Identifiez-vous' },
-      RW: { dept: 'Hitamo Serivisi', deptSub: 'Ni serivisi izihe ukeneye uyu munsi?', id: 'Iyerekane' }
-    };
     const l = labels[lang] || labels.EN;
     document.getElementById('deptTitle').innerText = l.dept;
     document.getElementById('deptSubtitle').innerText = l.deptSub;
     document.getElementById('idTitle').innerText = l.id;
+    document.getElementById('idSubtitle').innerText = l.idSub;
+    document.getElementById('idInputLabel').innerText = l.idInput;
     goTo('stepDept');
   }
 
@@ -186,25 +241,109 @@
     btn.classList.add('active');
   }
 
-  async function lookupOwner(val) {
-    const v = val.trim().replace(/\s/g, '');
-    const box = document.getElementById('ownerPreviewBox');
-    const nameEl = document.getElementById('previewName');
+  // ---- NIDA lookup with debounce ----
+  function onIdInput(val) {
+    const v = val.replace(/\s/g, '');
+    const inp = document.getElementById('manualIdInput');
+    const statusEl = document.getElementById('lookupStatus');
+    const spinner = document.getElementById('lookupSpinner');
+    const card = document.getElementById('identityCard');
     const btn = document.getElementById('genTicketBtn');
-    if (v.length >= 6) {
-      try {
-        const res = await fetch(`/api/v1/patient/lookup/${v}`);
-        const data = await res.json();
-        nameEl.innerText = data.status === 'FOUND' ? `${data.full_name} (${data.category || 'Returning'})` : `New Patient — ID: ${v}`;
-      } catch { nameEl.innerText = `Patient ID: ${v}`; }
-      box.style.display = 'block';
+    const manualArea = document.getElementById('manualNameArea');
+
+    // Reset
+    card.style.display = 'none';
+    btn.style.display = 'none';
+    manualArea.style.display = 'none';
+    nidaResult = null;
+    inp.className = '';
+
+    if (v.length < 6) {
+      statusEl.innerText = '';
+      statusEl.className = 'lookup-status';
+      return;
+    }
+
+    statusEl.innerText = 'Looking up identity...';
+    statusEl.className = 'lookup-status';
+    spinner.style.display = 'block';
+
+    clearTimeout(lookupTimer);
+    lookupTimer = setTimeout(() => lookupNIDA(v), 600);
+  }
+
+  async function lookupNIDA(id) {
+    const spinner = document.getElementById('lookupSpinner');
+    const statusEl = document.getElementById('lookupStatus');
+    const inp = document.getElementById('manualIdInput');
+    const card = document.getElementById('identityCard');
+    const btn = document.getElementById('genTicketBtn');
+    const manualArea = document.getElementById('manualNameArea');
+
+    try {
+      const res = await fetch('/api/v1/nida/lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ national_id: id })
+      });
+      const data = await res.json();
+      spinner.style.display = 'none';
+      nidaResult = data;
+
+      if (data.status === 'FOUND') {
+        // Populate identity card
+        document.getElementById('idFullName').innerText = data.full_name || '—';
+        document.getElementById('idNumber').innerText = `ID: ${data.id_number}`;
+        document.getElementById('idNum').innerText = data.id_number;
+        document.getElementById('idDob').innerText = data.dob || '—';
+        document.getElementById('idGender').innerText = data.gender || '—';
+        document.getElementById('idNationality').innerText = data.nationality || '—';
+
+        const badge = document.getElementById('idSourceBadge');
+        const photoBox = document.getElementById('idPhotoBox');
+        const sourceNote = document.getElementById('idSourceNote');
+
+        if (data.source === 'NIDA_LIVE') {
+          badge.innerText = '✅ NIDA VERIFIED';
+          badge.style.background = 'var(--accent)';
+          sourceNote.innerText = 'Identity verified against Rwanda NIDA database.';
+        } else {
+          badge.innerText = '📋 LOCAL RECORD';
+          badge.style.background = 'var(--blue)';
+          sourceNote.innerText = data.note || 'Retrieved from local patient history.';
+        }
+
+        if (data.photo_base64) {
+          photoBox.innerHTML = `<img src="data:image/jpeg;base64,${data.photo_base64}" alt="ID Photo" />`;
+        } else {
+          photoBox.innerHTML = '👤';
+        }
+
+        card.style.display = 'block';
+        inp.classList.add('valid');
+        statusEl.innerText = '✅ Identity found — please confirm and generate your ticket.';
+        statusEl.className = 'lookup-status ok';
+        btn.style.display = 'block';
+
+      } else {
+        // NOT_FOUND — show manual name fallback
+        inp.classList.add('invalid');
+        statusEl.innerText = '⚠️ ID not found in NIDA database. You can still check in — please type your name below.';
+        statusEl.className = 'lookup-status err';
+        manualArea.style.display = 'block';
+        btn.style.display = 'block';
+      }
+    } catch (err) {
+      spinner.style.display = 'none';
+      inp.classList.add('invalid');
+      statusEl.innerText = '⚠️ Cannot reach hospital server. Please type your name and proceed.';
+      statusEl.className = 'lookup-status err';
+      manualArea.style.display = 'block';
       btn.style.display = 'block';
-    } else {
-      box.style.display = 'none';
-      btn.style.display = 'none';
     }
   }
 
+  // ---- OCR handler ----
   function handleKioskOcr(input) {
     const file = input.files[0];
     if (!file) return;
@@ -218,68 +357,88 @@
     reader.readAsDataURL(file);
   }
 
+  // ---- Submit ----
   async function submitKioskCheckin(method) {
     let identifier = '', full_name = '';
+
     if (method === 'MANUAL_ID') {
       identifier = document.getElementById('manualIdInput').value.trim().replace(/\s/g, '');
-      full_name = document.getElementById('previewName').innerText.split('(')[0].trim();
-      if (full_name.startsWith('New Patient')) full_name = `Patient ${identifier.slice(-4)}`;
+      if (!identifier) { showError('Please enter your National ID number.'); return; }
+      // Use NIDA name if found, otherwise manual fallback
+      if (nidaResult && nidaResult.status === 'FOUND' && nidaResult.full_name) {
+        full_name = nidaResult.full_name;
+      } else {
+        full_name = document.getElementById('manualNameFallback').value.trim();
+        if (!full_name) full_name = `Patient ${identifier.slice(-4)}`;
+      }
     } else if (method === 'NFC_CARD') {
       identifier = document.getElementById('nfcCardId').value.trim();
-      full_name = `NFC Patient ${identifier.slice(-4) || ''}`;
-      if (!identifier) { showError('Please enter or tap an NFC Card ID.'); return; }
+      full_name = document.getElementById('nfcPatientName').value.trim() || `NFC Card ${identifier.slice(-4)}`;
+      if (!identifier) { showError('Please enter or tap your NFC Card ID.'); return; }
     } else if (method === 'ID_OCR') {
       full_name = document.getElementById('ocrKioskName').value.trim();
       identifier = document.getElementById('ocrKioskId').value.trim();
+      if (!identifier) { showError('Please enter the ID number from the scan.'); return; }
     }
 
-    if (!identifier) { showError('Please provide an ID or card to continue.'); return; }
     if (!kioskData.department) { showError('Please go back and select a department.'); return; }
 
-    kioskData.identifier = identifier;
-    kioskData.full_name = full_name || `Patient ${identifier.slice(-4)}`;
+    // Show loading state
+    const btn = document.getElementById('genTicketBtn');
+    if (btn) { btn.disabled = true; btn.innerText = '⏳ Generating ticket...'; }
 
     try {
       const res = await fetch('/api/v1/checkin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          full_name: kioskData.full_name,
-          identifier: kioskData.identifier,
+          full_name: full_name || `Patient ${identifier.slice(-4)}`,
+          identifier,
           department: kioskData.department,
           method
         })
       });
       const result = await res.json();
+
       if (res.ok && result.status === 'SUCCESS') {
         document.getElementById('successTicket').innerText = result.ticket_number;
         document.getElementById('successDept').innerText = result.department;
         document.getElementById('successName').innerText = result.full_name;
         goTo('stepSuccess');
       } else if (res.status === 409) {
-        showError(result.error);
+        showError(result.error || 'You have already checked in for this department today.');
       } else {
         showError(result.error || 'Check-in failed. Please see the reception desk.');
       }
-    } catch { showError('Cannot connect to hospital server. Please see reception.'); }
+    } catch (err) {
+      showError('Cannot connect to hospital server. Please approach the reception desk.');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerText = '✅ Confirm & Generate Queue Ticket'; }
+    }
   }
 
   function showError(msg) {
     const el = document.getElementById('errorMsg');
     el.innerText = '⚠️ ' + msg;
     el.style.display = 'block';
-    setTimeout(() => { el.style.display = 'none'; }, 5000);
+    setTimeout(() => { el.style.display = 'none'; }, 6000);
   }
 
   function resetKiosk() {
-    kioskData = { language: 'EN', department: '', identifier: '', full_name: '' };
-    document.getElementById('manualIdInput').value = '';
-    document.getElementById('nfcCardId').value = '';
-    document.getElementById('ownerPreviewBox').style.display = 'none';
+    kioskData = { language:'EN', department:'', identifier:'', full_name:'' };
+    nidaResult = null;
+    ['manualIdInput','nfcCardId','nfcPatientName','ocrKioskName','ocrKioskId','manualNameFallback'].forEach(id => {
+      const el = document.getElementById(id); if(el) el.value = '';
+    });
+    document.getElementById('identityCard').style.display = 'none';
+    document.getElementById('manualNameArea').style.display = 'none';
     document.getElementById('genTicketBtn').style.display = 'none';
+    document.getElementById('lookupStatus').innerText = '';
     document.getElementById('ocrExtracted').style.display = 'none';
     const img = document.getElementById('ocrPreviewKiosk');
     if (img) { img.src=''; img.style.display='none'; }
+    // Reset to National ID tab
+    switchMethod('national-id', document.querySelector('.method-tab'));
     goTo('stepLang');
   }
 </script>
