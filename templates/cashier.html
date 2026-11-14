@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZeroPaper — Cashier Billing Terminal</title>
+  <style>
+    :root{--bg:#0f172a;--panel:#1e293b;--border:#334155;--text:#f8fafc;--muted:#94a3b8;--accent:#10b981;--blue:#3b82f6;--warn:#f59e0b;--danger:#ef4444;}
+    *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif;}
+    body{background:var(--bg);color:var(--text);padding:24px;}
+    .header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:16px;margin-bottom:24px;flex-wrap:wrap;gap:12px;}
+    .grid{display:grid;grid-template-columns:1fr 1.3fr;gap:24px;}
+    @media(max-width:800px){.grid{grid-template-columns:1fr;}}
+    .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:24px;}
+    h3{font-size:16px;color:#e2e8f0;margin-bottom:16px;}
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;margin-top:14px;}
+    input{width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:white;font-size:16px;font-weight:600;text-transform:uppercase;}
+    .btn{background:var(--accent);color:#052e16;border:none;padding:13px 20px;border-radius:8px;font-weight:800;cursor:pointer;width:100%;margin-top:16px;font-size:15px;}
+    .btn:hover{opacity:0.88;}
+    .btn:disabled{opacity:0.4;cursor:not-allowed;}
+    .btn-blue{background:var(--blue);color:white;}
+    table{width:100%;border-collapse:collapse;font-size:14px;}
+    th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--border);}
+    th{color:var(--muted);font-weight:600;font-size:13px;}
+    tr.clickable{cursor:pointer;}
+    tr.clickable:hover td{background:rgba(59,130,246,0.07);}
+    .badge{padding:3px 8px;border-radius:4px;font-weight:700;font-size:11px;}
+    .badge-pending{background:rgba(245,158,11,0.2);color:#fcd34d;}
+    .badge-paid{background:rgba(16,185,129,0.2);color:#6ee7b7;}
+    .details-box{margin-top:16px;background:rgba(0,0,0,0.25);padding:16px;border-radius:8px;border:1px dashed var(--border);}
+    .details-box p{margin-bottom:8px;font-size:14px;}
+    .details-box .fee{font-size:22px;color:var(--accent);font-weight:800;margin-top:8px;}
+    #pinPromptArea{display:none;margin-top:12px;}
+    #feedbackMsg{display:none;padding:10px 14px;border-radius:8px;font-weight:600;font-size:14px;margin-top:12px;}
+    .empty-state{color:var(--muted);text-align:center;padding:24px;font-size:14px;}
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1 style="font-size:19px;">💵 ZeroPaper Cashier Billing Terminal</h1>
+    <p style="color:var(--muted);font-size:13px;">Consultation Fee Verification & Payment Gateway</p>
+  </div>
+  <a href="/" style="background:var(--blue);color:white;padding:9px 16px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;">← Reception</a>
+</div>
+
+<div class="grid">
+  <!-- LEFT: Ticket lookup & payment -->
+  <div class="panel">
+    <h3>Verify Ticket & Process Payment</h3>
+    <label>Enter or scan Ticket Number (e.g. G-001)</label>
+    <input type="text" id="lookupTicket" placeholder="G-001" oninput="lookupTicketDetails(this.value)" />
+
+    <div id="detailsBox" class="details-box">
+      <p style="color:var(--muted);">Type a ticket number above to view patient details.</p>
+    </div>
+
+    <div id="pinPromptArea">
+      <label>Staff PIN to confirm payment</label>
+      <input type="password" id="staffPin" placeholder="Enter PIN..." style="text-transform:none;" />
+      <button class="btn" id="payBtn" onclick="confirmPayment()">✅ Confirm Payment & Clear for Doctor</button>
+    </div>
+
+    <div id="feedbackMsg"></div>
+  </div>
+
+  <!-- RIGHT: Pending payments queue -->
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h3 style="margin:0;">Pending Payments Today</h3>
+      <span id="pendingCount" style="background:rgba(245,158,11,0.2);color:#fcd34d;padding:4px 10px;border-radius:6px;font-size:13px;font-weight:700;">0 pending</span>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Ticket</th><th>Patient</th><th>Department</th><th>Status</th></tr>
+      </thead>
+      <tbody id="pendingTable">
+        <tr><td colspan="4" class="empty-state">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  let activeTicket = null;
+
+  async function fetchPendingPayments() {
+    try {
+      const res = await fetch('/api/v1/cashier/pending');
+      const list = await res.json();
+      const tbody = document.getElementById('pendingTable');
+      const pending = list.filter(r => r.payment_status !== 'PAID');
+      document.getElementById('pendingCount').innerText = `${pending.length} pending`;
+
+      if (!list.length) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No patients in queue today.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = list.map(r => `
+        <tr class="clickable" onclick="quickLoad('${r.ticket_number}')">
+          <td><strong>${r.ticket_number}</strong></td>
+          <td>${r.full_name}</td>
+          <td style="font-size:12px;">${r.department}</td>
+          <td><span class="badge ${r.payment_status==='PAID'?'badge-paid':'badge-pending'}">${r.payment_status}</span></td>
+        </tr>
+      `).join('');
+    } catch(err) { console.error(err); }
+  }
+
+  function quickLoad(ticketNo) {
+    document.getElementById('lookupTicket').value = ticketNo;
+    lookupTicketDetails(ticketNo);
+  }
+
+  async function lookupTicketDetails(raw) {
+    const ticketNo = raw.trim().toUpperCase();
+    const box = document.getElementById('detailsBox');
+    const pinArea = document.getElementById('pinPromptArea');
+
+    if (ticketNo.length < 3) {
+      box.innerHTML = '<p style="color:var(--muted);">Type a ticket number above to view patient details.</p>';
+      pinArea.style.display = 'none';
+      activeTicket = null;
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/v1/cashier/lookup/${ticketNo}`);
+      const data = await res.json();
+
+      if (data.status === 'FOUND') {
+        activeTicket = data.ticket;
+        const dept = data.ticket.department || '';
+        const fee = dept.includes('Emergency') ? '10,000 RWF' : dept.includes('Laboratory') ? '7,000 RWF' : dept.includes('Pharmacy') ? '2,000 RWF' : '5,000 RWF';
+        const isPaid = data.ticket.payment_status === 'PAID';
+
+        box.innerHTML = `
+          <p><strong>Patient:</strong> ${data.ticket.full_name}</p>
+          <p><strong>Department:</strong> ${dept}</p>
+          <p><strong>Identifier:</strong> ${data.ticket.identifier}</p>
+          <p><strong>Status:</strong> <span class="badge ${isPaid?'badge-paid':'badge-pending'}">${data.ticket.payment_status}</span></p>
+          <p class="fee">Consultation Fee: ${fee}</p>
+          ${isPaid ? '<p style="color:#6ee7b7;margin-top:8px;font-weight:700;">✅ Already paid — cleared for doctor.</p>' : ''}
+        `;
+        pinArea.style.display = isPaid ? 'none' : 'block';
+      } else {
+        box.innerHTML = '<p style="color:var(--danger);">❌ Ticket not found in today\'s queue.</p>';
+        pinArea.style.display = 'none';
+        activeTicket = null;
+      }
+    } catch { box.innerHTML = '<p style="color:var(--danger);">Network error — cannot reach server.</p>'; }
+  }
+
+  async function confirmPayment() {
+    if (!activeTicket) return;
+    const pin = document.getElementById('staffPin').value.trim();
+    if (!pin) { showFeedback('Enter your Staff PIN to confirm payment.', false); return; }
+
+    const btn = document.getElementById('payBtn');
+    btn.disabled = true;
+    btn.innerText = 'Processing...';
+
+    try {
+      const res = await fetch('/api/v1/cashier/pay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Staff-PIN': pin },
+        body: JSON.stringify({ ticket_number: activeTicket.ticket_number })
+      });
+      const result = await res.json();
+
+      if (result.status === 'SUCCESS') {
+        showFeedback(`✅ Payment confirmed for ${activeTicket.ticket_number}. Patient cleared for doctor.`, true);
+        document.getElementById('lookupTicket').value = '';
+        document.getElementById('staffPin').value = '';
+        document.getElementById('detailsBox').innerHTML = '<p style="color:var(--muted);">Type a ticket number above to view patient details.</p>';
+        document.getElementById('pinPromptArea').style.display = 'none';
+        activeTicket = null;
+        fetchPendingPayments();
+      } else {
+        showFeedback(result.error || 'Payment failed — check PIN and try again.', false);
+      }
+    } catch { showFeedback('Network error.', false); }
+    finally { btn.disabled = false; btn.innerText = '✅ Confirm Payment & Clear for Doctor'; }
+  }
+
+  function showFeedback(msg, ok) {
+    const el = document.getElementById('feedbackMsg');
+    el.style.display = 'block';
+    el.style.background = ok ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)';
+    el.style.color = ok ? '#6ee7b7' : '#fca5a5';
+    el.style.border = `1px solid ${ok ? '#10b981' : '#ef4444'}`;
+    el.innerText = msg;
+    setTimeout(() => { el.style.display = 'none'; }, 6000);
+  }
+
+  fetchPendingPayments();
+  setInterval(fetchPendingPayments, 5000);
+</script>
+</body>
+</html>

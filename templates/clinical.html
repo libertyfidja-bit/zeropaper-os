@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZeroPaper OS — Clinical Portal</title>
+  <style>
+    :root{--bg:#0f172a;--panel:#1e293b;--border:#334155;--text:#f8fafc;--muted:#94a3b8;--accent:#10b981;--blue:#3b82f6;--purple:#8b5cf6;--warn:#f59e0b;--danger:#ef4444;}
+    *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif;}
+    body{background:var(--bg);color:var(--text);padding:24px;}
+    .header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:16px;margin-bottom:24px;flex-wrap:wrap;gap:12px;}
+    /* Page-level tabs (Nurse / Doctor / Pharmacy) */
+    .page-tabs{display:flex;gap:8px;flex-wrap:wrap;}
+    .page-tab{background:var(--panel);color:var(--muted);border:1px solid var(--border);padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px;transition:all 0.15s;}
+    .page-tab:hover{border-color:var(--blue);color:white;}
+    .page-tab.active{background:var(--blue);color:white;border-color:var(--blue);}
+    .page-tab.nurse.active{background:var(--purple);border-color:var(--purple);}
+    .page-tab.pharmacy.active{background:var(--accent);color:#052e16;border-color:var(--accent);}
+    /* Views */
+    .page-view{display:none;}
+    .page-view.active{display:block;}
+    .two-col{display:grid;grid-template-columns:1fr 1.3fr;gap:24px;}
+    @media(max-width:800px){.two-col{grid-template-columns:1fr;}}
+    .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:0;}
+    h3{font-size:16px;color:#e2e8f0;margin-bottom:16px;}
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:5px;margin-top:12px;}
+    input,select,textarea{width:100%;padding:11px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:white;font-size:14px;}
+    textarea{height:90px;resize:vertical;}
+    input[readonly]{opacity:0.6;cursor:default;}
+    .btn{background:var(--accent);color:#052e16;border:none;padding:12px 20px;border-radius:8px;font-weight:800;cursor:pointer;width:100%;margin-top:16px;font-size:15px;}
+    .btn:hover{opacity:0.88;}
+    .btn:disabled{opacity:0.4;cursor:not-allowed;}
+    .btn-blue{background:var(--blue);color:white;}
+    .btn-purple{background:var(--purple);color:white;}
+    /* Patient list */
+    .patient-list{max-height:340px;overflow-y:auto;}
+    .patient-item{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer;border-radius:8px;margin-bottom:4px;}
+    .patient-item:hover,.patient-item.selected{background:rgba(59,130,246,0.12);border-color:var(--blue);}
+    .patient-item .ticket{font-weight:800;color:var(--blue);font-size:16px;}
+    .patient-item .info{font-size:13px;color:var(--muted);margin-top:2px;}
+    /* Pharmacy cards */
+    .rx-card{background:rgba(16,185,129,0.07);border:1px solid var(--accent);border-radius:10px;padding:16px;margin-bottom:14px;}
+    .rx-card h4{color:#6ee7b7;margin-bottom:8px;font-size:15px;}
+    .rx-card p{font-size:14px;margin-bottom:4px;color:#cbd5e1;}
+    .rx-card .btn-dispense{background:var(--accent);color:#052e16;border:none;padding:8px 16px;border-radius:6px;font-weight:700;cursor:pointer;margin-top:10px;font-size:13px;}
+    /* Nurse vitals */
+    .vitals-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+    .badge{padding:3px 8px;border-radius:4px;font-weight:700;font-size:11px;}
+    .badge-waiting{background:rgba(245,158,11,0.2);color:#fcd34d;}
+    .badge-inconsu{background:rgba(59,130,246,0.2);color:#93c5fd;}
+    #feedbackBanner{display:none;padding:10px 14px;border-radius:8px;font-weight:600;font-size:13px;margin-bottom:14px;}
+    .empty-state{color:var(--muted);text-align:center;padding:28px;font-size:14px;}
+    .pin-row{display:flex;gap:10px;align-items:flex-end;margin-top:12px;}
+    .pin-row input{flex:1;margin:0;}
+    .pin-row button{flex:0 0 auto;padding:11px 18px;border-radius:8px;font-weight:700;cursor:pointer;border:none;background:var(--blue);color:white;font-size:14px;white-space:nowrap;}
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1 style="font-size:19px;">🩺 ZeroPaper Clinical & Pharmacy Gateway</h1>
+    <p style="color:var(--muted);font-size:13px;">Electronic Health Records & Zero-Paper Prescription Dispatch</p>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <div class="page-tabs">
+      <button class="page-tab nurse active" onclick="switchPage('nurse',this)">👩‍⚕️ Nurse Triage</button>
+      <button class="page-tab" onclick="switchPage('doctor',this)">🩺 Doctor Consultation</button>
+      <button class="page-tab pharmacy" onclick="switchPage('pharmacy',this)">💊 Pharmacy Dispatch</button>
+    </div>
+    <a href="/api/v1/export-esg-csv" style="background:var(--accent);color:#052e16;padding:9px 14px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;">📥 ESG Report</a>
+    <a href="/" style="background:var(--border);color:white;padding:9px 14px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;">← Reception</a>
+  </div>
+</div>
+
+<div id="feedbackBanner"></div>
+
+<!-- ===== NURSE VIEW ===== -->
+<div id="nurseView" class="page-view active">
+  <div class="two-col">
+    <!-- Patient list: all WAITING (paid or not) -->
+    <div class="panel">
+      <h3>👩‍⚕️ Patients Awaiting Triage</h3>
+      <div class="patient-list" id="nursePatientList">
+        <div class="empty-state">Loading patients...</div>
+      </div>
+    </div>
+    <!-- Vitals entry -->
+    <div class="panel">
+      <h3>Record Vitals & Triage Notes</h3>
+      <label>Selected Ticket</label>
+      <input type="text" id="nurseTicket" readonly placeholder="Select a patient on the left..." />
+      <div class="vitals-grid">
+        <div>
+          <label>Blood Pressure (mmHg)</label>
+          <input type="text" id="vBP" placeholder="e.g. 120/80" />
+        </div>
+        <div>
+          <label>Temperature (°C)</label>
+          <input type="text" id="vTemp" placeholder="e.g. 37.2" />
+        </div>
+        <div>
+          <label>Pulse (bpm)</label>
+          <input type="text" id="vPulse" placeholder="e.g. 72" />
+        </div>
+        <div>
+          <label>SpO2 (%)</label>
+          <input type="text" id="vSpo2" placeholder="e.g. 98" />
+        </div>
+      </div>
+      <label>Weight (kg)</label>
+      <input type="text" id="vWeight" placeholder="e.g. 68" />
+      <label>Chief Complaint / Triage Notes</label>
+      <textarea id="vNotes" placeholder="e.g. Patient reports fever for 3 days, headache..."></textarea>
+      <div class="pin-row">
+        <input type="password" id="nursePIN" placeholder="Staff PIN..." style="text-transform:none;" />
+        <button onclick="saveNurseVitals()">Save Vitals</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== DOCTOR VIEW ===== -->
+<div id="doctorView" class="page-view">
+  <div class="two-col">
+    <!-- Patient list: IN_CONSULTATION (paid + called) -->
+    <div class="panel">
+      <h3>🩺 Patients Ready for Consultation</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">These patients have paid and been called by reception.</p>
+      <div class="patient-list" id="doctorPatientList">
+        <div class="empty-state">Loading patients...</div>
+      </div>
+    </div>
+    <!-- Prescription form -->
+    <div class="panel">
+      <h3>Electronic Consultation & Prescription</h3>
+      <label>Active Ticket</label>
+      <input type="text" id="docTicket" readonly placeholder="Select a patient on the left..." />
+      <label>Recorded Vitals</label>
+      <input type="text" id="docVitals" readonly placeholder="No vitals recorded yet" />
+      <label>Clinical Diagnosis</label>
+      <textarea id="diagInput" placeholder="Enter clinical diagnosis and examination notes..."></textarea>
+      <label>Electronic Medication Prescription (Rx)</label>
+      <textarea id="rxInput" placeholder="e.g. Amoxicillin 500mg — 1 tab 3× daily × 7 days&#10;Paracetamol 1g — PRN for pain"></textarea>
+      <label>Lab / Diagnostic Orders</label>
+      <input type="text" id="labInput" placeholder="e.g. Malaria RDT, Full Blood Count, Urinalysis" />
+      <div class="pin-row">
+        <input type="password" id="docPIN" placeholder="Staff PIN..." style="text-transform:none;" />
+        <button onclick="submitPrescription()">Transmit Rx to Pharmacy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PHARMACY VIEW ===== -->
+<div id="pharmacyView" class="page-view">
+  <div style="max-width:900px;">
+    <div class="panel">
+      <h3>💊 Pending Electronic Prescriptions</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:16px;">Prescriptions transmitted by doctors. Dispense and mark complete.</p>
+      <div id="pharmacyQueueList"><div class="empty-state">Loading pharmacy queue...</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ---- Page tab switching ----
+  function switchPage(name, btn) {
+    document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('.page-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(name + 'View').classList.add('active');
+    if (name === 'nurse') fetchNursePatients();
+    else if (name === 'doctor') fetchDoctorPatients();
+    else fetchPharmacyQueue();
+  }
+
+  function showBanner(msg, ok=true) {
+    const b = document.getElementById('feedbackBanner');
+    b.style.display = 'block';
+    b.style.background = ok ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)';
+    b.style.color = ok ? '#6ee7b7' : '#fca5a5';
+    b.style.border = `1px solid ${ok ? '#10b981' : '#ef4444'}`;
+    b.innerText = msg;
+    setTimeout(() => { b.style.display = 'none'; }, 5000);
+  }
+
+  // ---- NURSE ----
+  async function fetchNursePatients() {
+    try {
+      const res = await fetch('/api/v1/dashboard');
+      const data = await res.json();
+      const waiting = (data.queue || []).filter(r => r.status === 'WAITING');
+      const list = document.getElementById('nursePatientList');
+      if (!waiting.length) {
+        list.innerHTML = '<div class="empty-state">No patients currently waiting for triage.</div>';
+        return;
+      }
+      list.innerHTML = waiting.map(p => `
+        <div class="patient-item" onclick="selectNursePatient('${p.ticket_number}', '${p.full_name}', '${p.department}')">
+          <div>
+            <div class="ticket">${p.ticket_number}</div>
+            <div class="info">${p.full_name}</div>
+            <div class="info">${p.department}</div>
+          </div>
+          <span class="badge badge-waiting">${p.payment_status}</span>
+        </div>
+      `).join('');
+    } catch(err) { console.error(err); }
+  }
+
+  function selectNursePatient(ticket, name, dept) {
+    document.getElementById('nurseTicket').value = `${ticket} — ${name} (${dept})`;
+    document.querySelectorAll('#nursePatientList .patient-item').forEach(el => {
+      el.classList.toggle('selected', el.querySelector('.ticket').innerText === ticket);
+    });
+  }
+
+  async function saveNurseVitals() {
+    const ticketRaw = document.getElementById('nurseTicket').value;
+    if (!ticketRaw) { showBanner('Select a patient first.', false); return; }
+    const ticket = ticketRaw.split(' — ')[0].trim();
+    const pin = document.getElementById('nursePIN').value.trim();
+    if (!pin) { showBanner('Enter your Staff PIN.', false); return; }
+
+    const vitals = [
+      document.getElementById('vBP').value && `BP: ${document.getElementById('vBP').value}`,
+      document.getElementById('vTemp').value && `Temp: ${document.getElementById('vTemp').value}°C`,
+      document.getElementById('vPulse').value && `Pulse: ${document.getElementById('vPulse').value}bpm`,
+      document.getElementById('vSpo2').value && `SpO2: ${document.getElementById('vSpo2').value}%`,
+      document.getElementById('vWeight').value && `Weight: ${document.getElementById('vWeight').value}kg`,
+    ].filter(Boolean).join(' | ');
+
+    const notes = document.getElementById('vNotes').value.trim();
+
+    try {
+      const res = await fetch('/api/v1/clinical/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Staff-PIN': pin },
+        body: JSON.stringify({
+          ticket_number: ticket,
+          diagnosis: notes || 'Nurse triage — pending doctor review',
+          prescription: 'Pending doctor consultation',
+          lab_notes: vitals || 'Vitals not recorded'
+        })
+      });
+      const result = await res.json();
+      if (result.status === 'SUCCESS') {
+        showBanner(`✅ Vitals saved for ${ticket}. Patient moved to doctor queue.`, true);
+        ['nurseTicket','vBP','vTemp','vPulse','vSpo2','vWeight','vNotes','nursePIN'].forEach(id => {
+          const el = document.getElementById(id); if(el) el.value='';
+        });
+        fetchNursePatients();
+      } else {
+        showBanner(result.error || result.message || 'Failed to save vitals.', false);
+      }
+    } catch { showBanner('Network error.', false); }
+  }
+
+  // ---- DOCTOR ----
+  async function fetchDoctorPatients() {
+    try {
+      const res = await fetch('/api/v1/clinical/waiting-tickets');
+      const tickets = await res.json();
+      const list = document.getElementById('doctorPatientList');
+      if (!tickets.length) {
+        list.innerHTML = '<div class="empty-state">No patients in consultation queue.<br><span style="font-size:12px;">Patients appear here after payment and receptionist calls them in.</span></div>';
+        return;
+      }
+      list.innerHTML = tickets.map(t => `
+        <div class="patient-item" onclick="selectDoctorPatient('${t.ticket_number}', '${t.full_name}', '${t.department}')">
+          <div>
+            <div class="ticket">${t.ticket_number}</div>
+            <div class="info">${t.full_name}</div>
+            <div class="info">${t.department}</div>
+          </div>
+          <span class="badge badge-inconsu">IN CONSULT</span>
+        </div>
+      `).join('');
+    } catch(err) { console.error(err); }
+  }
+
+  function selectDoctorPatient(ticket, name, dept) {
+    document.getElementById('docTicket').value = `${ticket} — ${name} (${dept})`;
+    document.querySelectorAll('#doctorPatientList .patient-item').forEach(el => {
+      el.classList.toggle('selected', el.querySelector('.ticket').innerText === ticket);
+    });
+    // Try loading nurse vitals note if available
+    document.getElementById('docVitals').value = 'Check nurse triage notes in lab_notes field below.';
+  }
+
+  async function submitPrescription() {
+    const ticketRaw = document.getElementById('docTicket').value;
+    if (!ticketRaw) { showBanner('Select a patient first.', false); return; }
+    const ticket = ticketRaw.split(' — ')[0].trim();
+    const diag = document.getElementById('diagInput').value.trim();
+    const rx = document.getElementById('rxInput').value.trim();
+    const lab = document.getElementById('labInput').value.trim();
+    const pin = document.getElementById('docPIN').value.trim();
+
+    if (!diag) { showBanner('Please enter a diagnosis.', false); return; }
+    if (!pin) { showBanner('Enter your Staff PIN.', false); return; }
+
+    try {
+      const res = await fetch('/api/v1/clinical/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Staff-PIN': pin },
+        body: JSON.stringify({ ticket_number: ticket, diagnosis: diag, prescription: rx, lab_notes: lab })
+      });
+      const result = await res.json();
+      if (result.status === 'SUCCESS') {
+        showBanner(`✅ Prescription transmitted to pharmacy for ${ticket}.`, true);
+        ['docTicket','docVitals','diagInput','rxInput','labInput','docPIN'].forEach(id => {
+          const el = document.getElementById(id); if(el) el.value='';
+        });
+        fetchDoctorPatients();
+      } else {
+        showBanner(result.error || result.message || 'Failed to save prescription.', false);
+      }
+    } catch { showBanner('Network error.', false); }
+  }
+
+  // ---- PHARMACY ----
+  async function fetchPharmacyQueue() {
+    try {
+      const res = await fetch('/api/v1/pharmacy/pending');
+      const records = await res.json();
+      const container = document.getElementById('pharmacyQueueList');
+      if (!records.length) {
+        container.innerHTML = '<div class="empty-state">No pending prescriptions in the pharmacy queue.</div>';
+        return;
+      }
+      container.innerHTML = records.map(r => `
+        <div class="rx-card">
+          <h4>🎫 Ticket: ${r.ticket_number}</h4>
+          <p><strong>Diagnosis:</strong> ${r.diagnosis || '—'}</p>
+          <p><strong>Prescription (Rx):</strong> ${r.prescription || '—'}</p>
+          <p><strong>Lab Orders / Vitals:</strong> ${r.lab_notes || '—'}</p>
+          <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap;">
+            <input type="password" id="pharmPin_${r.id}" placeholder="Staff PIN..." style="max-width:180px;padding:8px;font-size:13px;text-transform:none;" />
+            <button class="btn-dispense" onclick="dispenseMedication(${r.id})">✅ Mark Dispensed</button>
+          </div>
+        </div>
+      `).join('');
+    } catch(err) { console.error(err); }
+  }
+
+  async function dispenseMedication(recordId) {
+    const pinEl = document.getElementById(`pharmPin_${recordId}`);
+    const pin = pinEl ? pinEl.value.trim() : '';
+    if (!pin) { showBanner('Enter your Staff PIN to dispense.', false); return; }
+
+    try {
+      const res = await fetch('/api/v1/pharmacy/dispense', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Staff-PIN': pin },
+        body: JSON.stringify({ record_id: recordId })
+      });
+      const result = await res.json();
+      if (result.status === 'DISPENSED') {
+        showBanner('✅ Medication dispensed. Record cleared from queue.', true);
+        fetchPharmacyQueue();
+      } else {
+        showBanner(result.error || 'Failed to dispense. Check PIN.', false);
+      }
+    } catch { showBanner('Network error.', false); }
+  }
+
+  // Initial load
+  fetchNursePatients();
+  setInterval(() => {
+    const active = document.querySelector('.page-view.active');
+    if (active.id === 'nurseView') fetchNursePatients();
+    else if (active.id === 'doctorView') fetchDoctorPatients();
+    else fetchPharmacyQueue();
+  }, 6000);
+</script>
+</body>
+</html>

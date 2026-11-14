@@ -1,1 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZeroPaper OS — Receptionist Control Plane</title>
+  <style>
+    :root {
+      --bg: #090d16; --card: #131c31; --border: #223254;
+      --accent: #10b981; --blue: #3b82f6; --text: #f8fafc; --muted: #94a3b8;
+      --warn: #f59e0b; --danger: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 24px; }
+    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+    .nav-links { display: flex; gap: 8px; flex-wrap: wrap; }
+    .nav-links a { background: var(--border); color: white; padding: 8px 14px; border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: 600; }
+    .nav-links a:hover { background: var(--blue); }
+    .grid { display: grid; grid-template-columns: 1fr 1.5fr; gap: 24px; }
+    @media(max-width:800px){ .grid { grid-template-columns: 1fr; } }
+    .panel { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 24px; }
+    h3 { margin-bottom: 16px; font-size: 17px; color: #e2e8f0; }
+    label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; margin-top: 12px; }
+    input, select { width: 100%; padding: 11px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: white; font-size: 15px; }
+    .btn { background: var(--accent); color: #052e16; border: none; padding: 13px; border-radius: 8px; font-weight: 800; cursor: pointer; width: 100%; margin-top: 18px; font-size: 15px; }
+    .btn:hover { opacity: 0.88; }
+    .btn-blue { background: var(--blue); color: white; }
+    /* Tabs */
+    .tabs { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+    .tab-btn { background: var(--bg); color: var(--muted); border: 1px solid var(--border); padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .tab-btn.active { background: var(--blue); color: white; border-color: var(--blue); }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+    /* Checkin method specific */
+    .method-panel { background: rgba(59,130,246,0.07); border: 1px dashed var(--blue); border-radius: 10px; padding: 16px; margin-top: 12px; }
+    /* Queue table */
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 11px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 13px; }
+    .badge { padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px; }
+    .badge-waiting { background: rgba(245,158,11,0.2); color: #fcd34d; }
+    .badge-paid { background: rgba(16,185,129,0.2); color: #6ee7b7; }
+    .badge-inconsu { background: rgba(59,130,246,0.2); color: #93c5fd; }
+    .badge-served { background: rgba(148,163,184,0.2); color: #94a3b8; }
+    /* Banner */
+    #feedbackBanner { display: none; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-weight: 600; font-size: 14px; }
+    /* NFC scan animation */
+    .nfc-anim { text-align: center; padding: 30px; }
+    .nfc-ring { width: 90px; height: 90px; border-radius: 50%; border: 4px solid var(--blue); margin: 0 auto 16px; animation: nfcPulse 1.4s ease-in-out infinite; }
+    @keyframes nfcPulse { 0%,100%{box-shadow:0 0 0 0 rgba(59,130,246,0.5);} 50%{box-shadow:0 0 0 20px rgba(59,130,246,0);} }
+    /* OCR area */
+    .ocr-area { border: 2px dashed var(--border); border-radius: 10px; padding: 20px; text-align: center; color: var(--muted); margin-bottom: 12px; cursor: pointer; }
+    .ocr-area:hover { border-color: var(--accent); color: var(--accent); }
+    #ocrFileInput { display: none; }
+    .ocr-preview { max-width: 100%; border-radius: 8px; margin-top: 10px; display: none; }
+    .metrics-row { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    .metric-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 20px; flex: 1; min-width: 120px; }
+    .metric-card h4 { font-size: 26px; color: var(--accent); font-weight: 800; }
+    .metric-card span { font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
 
+<div class="header">
+  <div>
+    <h1 style="font-size:20px;">🏥 ZeroPaper OS — Receptionist Control Plane</h1>
+    <p style="color:var(--muted);font-size:13px;">Secure On-Premise Patient Management & Triage Gateway</p>
+  </div>
+  <div class="nav-links">
+    <a href="/kiosk" target="_blank">🪟 Patient Kiosk</a>
+    <a href="/cashier" target="_blank">💵 Cashier</a>
+    <a href="/clinical" target="_blank">🩺 Clinical</a>
+    <a href="/tv" target="_blank">📺 TV Screen</a>
+  </div>
+</div>
+
+<!-- Live Metrics Row -->
+<div class="metrics-row" id="metricsRow">
+  <div class="metric-card"><h4 id="mTotal">0</h4><span>Total Today</span></div>
+  <div class="metric-card"><h4 id="mWaiting">0</h4><span>Waiting</span></div>
+  <div class="metric-card"><h4 id="mServed">0</h4><span>Served</span></div>
+  <div class="metric-card"><h4 id="mSheets">0</h4><span>Sheets Saved</span></div>
+</div>
+
+<div class="grid">
+  <!-- LEFT: Check-In Panel with Tabs -->
+  <div class="panel">
+    <h3>Register Patient</h3>
+    <div id="feedbackBanner"></div>
+
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('manual',this)">✍️ Manual Entry</button>
+      <button class="tab-btn" onclick="switchTab('nfc',this)">💳 NFC Card</button>
+      <button class="tab-btn" onclick="switchTab('ocr',this)">📷 ID Scanner (OCR)</button>
+    </div>
+
+    <!-- MANUAL TAB -->
+    <div id="tab-manual" class="tab-pane active">
+      <label>Patient Full Name</label>
+      <input type="text" id="manualName" placeholder="e.g. Jean Claude Uwimana" />
+      <label>Phone Number or Identifier</label>
+      <input type="text" id="manualId" placeholder="e.g. +250780000000" />
+      <label>Department</label>
+      <select id="manualDept">
+        <option value="General Consultation">🩺 General Consultation</option>
+        <option value="Laboratory & Diagnostics">🧪 Laboratory & Diagnostics</option>
+        <option value="Pharmacy Dispatch">💊 Pharmacy & Refills</option>
+        <option value="Emergency Triage">🚨 Emergency / Urgent</option>
+      </select>
+      <button class="btn" onclick="submitCheckin('RECEPTION_MANUAL')">Generate Ticket & Add to Queue</button>
+    </div>
+
+    <!-- NFC TAB -->
+    <div id="tab-nfc" class="tab-pane">
+      <div class="method-panel">
+        <div class="nfc-anim">
+          <div class="nfc-ring"></div>
+          <p style="font-size:16px;font-weight:700;color:var(--blue);">Tap NFC Card or Wristband</p>
+          <p style="color:var(--muted);font-size:13px;margin-top:8px;">Hold the card near the reader. Patient data will auto-fill below.</p>
+        </div>
+        <label>Patient Name (from NFC card)</label>
+        <input type="text" id="nfcName" placeholder="Auto-filled from card..." />
+        <label>Card ID / NFC UID</label>
+        <input type="text" id="nfcId" placeholder="Auto-filled from card or enter manually..." />
+        <label>Department</label>
+        <select id="nfcDept">
+          <option value="General Consultation">🩺 General Consultation</option>
+          <option value="Laboratory & Diagnostics">🧪 Laboratory & Diagnostics</option>
+          <option value="Pharmacy Dispatch">💊 Pharmacy & Refills</option>
+          <option value="Emergency Triage">🚨 Emergency / Urgent</option>
+        </select>
+        <button class="btn btn-blue" onclick="submitCheckin('NFC_CARD')">Register NFC Card Patient</button>
+      </div>
+    </div>
+
+    <!-- OCR TAB -->
+    <div id="tab-ocr" class="tab-pane">
+      <div class="method-panel">
+        <div class="ocr-area" onclick="document.getElementById('ocrFileInput').click()">
+          <div style="font-size:40px;">📷</div>
+          <p style="font-weight:700;margin-top:8px;">Click to upload National ID photo</p>
+          <p style="font-size:12px;margin-top:4px;">JPG, PNG — front side of Rwanda National ID</p>
+          <img id="ocrPreview" class="ocr-preview" />
+        </div>
+        <input type="file" id="ocrFileInput" accept="image/*" onchange="handleOcrUpload(this)" />
+        <div id="ocrResult" style="display:none;">
+          <label>Extracted Name</label>
+          <input type="text" id="ocrName" placeholder="Extracted from ID..." />
+          <label>Extracted ID Number</label>
+          <input type="text" id="ocrIdNum" placeholder="Extracted from ID..." />
+        </div>
+        <label>Department</label>
+        <select id="ocrDept">
+          <option value="General Consultation">🩺 General Consultation</option>
+          <option value="Laboratory & Diagnostics">🧪 Laboratory & Diagnostics</option>
+          <option value="Pharmacy Dispatch">💊 Pharmacy & Refills</option>
+          <option value="Emergency Triage">🚨 Emergency / Urgent</option>
+        </select>
+        <button class="btn" id="ocrSubmitBtn" style="display:none;" onclick="submitCheckin('ID_OCR')">Register Scanned ID Patient</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Live Queue -->
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+      <h3 style="margin:0;">Live Patient Queue</h3>
+      <button class="btn btn-blue" style="width:auto;padding:8px 14px;margin:0;font-size:13px;" onclick="callNextPatient()">📢 Call Next Patient</button>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Ticket</th><th>Patient</th><th>Department</th><th>Payment</th><th>Status</th></tr>
+      </thead>
+      <tbody id="queueTable">
+        <tr><td colspan="5" style="color:var(--muted);text-align:center;padding:20px;">Loading queue...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  // --- Tab switching ---
+  function switchTab(name, btn) {
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    btn.classList.add('active');
+  }
+
+  // --- Banner ---
+  function showBanner(msg, ok=true) {
+    const b = document.getElementById('feedbackBanner');
+    b.style.display = 'block';
+    b.style.background = ok ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)';
+    b.style.color = ok ? '#6ee7b7' : '#fca5a5';
+    b.style.border = `1px solid ${ok ? '#10b981' : '#ef4444'}`;
+    b.innerText = msg;
+    setTimeout(() => { b.style.display = 'none'; }, 5000);
+  }
+
+  // --- OCR handler (client-side simulation; server-side OCR can be wired here) ---
+  function handleOcrUpload(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = document.getElementById('ocrPreview');
+      img.src = e.target.result;
+      img.style.display = 'block';
+      // Simulate OCR extraction — in production wire to /api/v1/ocr endpoint
+      document.getElementById('ocrResult').style.display = 'block';
+      document.getElementById('ocrName').value = '';
+      document.getElementById('ocrIdNum').value = '';
+      document.getElementById('ocrSubmitBtn').style.display = 'block';
+      showBanner('📷 ID image loaded. Please verify or fill in the extracted fields, then register.', true);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // --- Universal check-in submit ---
+  async function submitCheckin(method) {
+    let name='', identifier='', dept='';
+    if (method === 'RECEPTION_MANUAL') {
+      name = document.getElementById('manualName').value.trim();
+      identifier = document.getElementById('manualId').value.trim();
+      dept = document.getElementById('manualDept').value;
+    } else if (method === 'NFC_CARD') {
+      name = document.getElementById('nfcName').value.trim();
+      identifier = document.getElementById('nfcId').value.trim();
+      dept = document.getElementById('nfcDept').value;
+    } else if (method === 'ID_OCR') {
+      name = document.getElementById('ocrName').value.trim();
+      identifier = document.getElementById('ocrIdNum').value.trim();
+      dept = document.getElementById('ocrDept').value;
+    }
+    if (!name || !identifier) { showBanner('❌ Please fill in both patient name and identifier.', false); return; }
+
+    try {
+      const res = await fetch('/api/v1/checkin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ full_name: name, identifier, department: dept, method })
+      });
+      const result = await res.json();
+      if (res.ok && result.status === 'SUCCESS') {
+        showBanner(`✅ Ticket ${result.ticket_number} issued for ${result.full_name}`, true);
+        // Clear fields
+        ['manualName','manualId','nfcName','nfcId','ocrName','ocrIdNum'].forEach(id => {
+          const el = document.getElementById(id); if(el) el.value = '';
+        });
+        document.getElementById('ocrResult').style.display = 'none';
+        document.getElementById('ocrSubmitBtn').style.display = 'none';
+        const p = document.getElementById('ocrPreview'); if(p) p.style.display='none';
+        fetchDashboard();
+      } else if (res.status === 409) {
+        showBanner(`⚠️ ${result.error}`, false);
+      } else {
+        showBanner(`❌ ${result.error || 'Check-in failed. Check server status.'}`, false);
+      }
+    } catch(err) {
+      showBanner('❌ Network error — cannot reach hospital server.', false);
+    }
+  }
+
+  // --- Dashboard queue ---
+  async function fetchDashboard() {
+    try {
+      const res = await fetch('/api/v1/dashboard');
+      const data = await res.json();
+      // Metrics
+      document.getElementById('mTotal').innerText = data.metrics.total_visits || 0;
+      document.getElementById('mWaiting').innerText = (data.queue||[]).filter(r=>r.status==='WAITING').length;
+      document.getElementById('mServed').innerText = data.metrics.served_today || 0;
+      document.getElementById('mSheets').innerText = data.metrics.sheets_saved || 0;
+      // Queue table
+      const tbody = document.getElementById('queueTable');
+      const rows = (data.queue || []);
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:20px;">No patients in queue today.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = rows.map(r => {
+        const statusBadge = {
+          'WAITING': 'badge-waiting', 'IN_CONSULTATION': 'badge-inconsu',
+          'SERVED': 'badge-served'
+        }[r.status] || 'badge-waiting';
+        const payBadge = r.payment_status === 'PAID' ? 'badge-paid' : 'badge-waiting';
+        return `<tr>
+          <td><strong style="color:var(--accent);">${r.ticket_number}</strong></td>
+          <td>${r.full_name}</td>
+          <td style="font-size:12px;">${r.department}</td>
+          <td><span class="badge ${payBadge}">${r.payment_status}</span></td>
+          <td><span class="badge ${statusBadge}">${r.status}</span></td>
+        </tr>`;
+      }).join('');
+    } catch(err) { console.error('Dashboard error:', err); }
+  }
+
+  // --- Call next ---
+  async function callNextPatient() {
+    const pin = prompt('Enter Staff PIN to call next patient:');
+    if (!pin) return;
+    try {
+      const res = await fetch('/api/v1/queue/call-next', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Staff-PIN': pin }
+      });
+      const result = await res.json();
+      if (result.status === 'CALLED') {
+        alert(`📢 Now Calling: ${result.ticket} — ${result.full_name || ''}\n${result.department || ''}`);
+        fetchDashboard();
+      } else if (result.status === 'AWAITING_PAYMENT') {
+        alert(`⚠️ ${result.message}`);
+      } else if (result.status === 'EMPTY') {
+        alert('Queue is empty — no paid patients waiting.');
+      } else {
+        alert(result.error || 'Invalid PIN or unknown error.');
+      }
+    } catch(err) { alert('Network error.'); }
+  }
+
+  fetchDashboard();
+  setInterval(fetchDashboard, 5000);
+</script>
+</body>
+</html>

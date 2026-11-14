@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZeroPaper — Patient Self-Service Kiosk</title>
+  <style>
+    :root { --bg:#090d16;--card:#131c31;--border:#223254;--accent:#10b981;--blue:#3b82f6;--text:#f8fafc;--muted:#94a3b8; }
+    *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif;}
+    body{background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:24px;}
+    .kiosk-card{background:var(--card);border:2px solid var(--border);border-radius:24px;padding:36px;width:100%;max-width:780px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.6);}
+    h1{font-size:30px;margin-bottom:10px;}
+    p.sub{color:var(--muted);font-size:17px;margin-bottom:28px;}
+    .grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:16px;}
+    .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;}
+    .option-btn{background:var(--bg);color:var(--text);border:2px solid var(--border);padding:22px 14px;border-radius:14px;font-size:17px;font-weight:700;cursor:pointer;transition:all 0.2s;}
+    .option-btn:hover,.option-btn.selected{border-color:var(--accent);background:rgba(16,185,129,0.1);color:#6ee7b7;}
+    .btn-primary{background:var(--accent);color:#052e16;border:none;padding:16px;width:100%;border-radius:12px;font-size:18px;font-weight:800;cursor:pointer;margin-top:16px;}
+    .btn-secondary{background:var(--blue);color:white;border:none;padding:16px;width:100%;border-radius:12px;font-size:18px;font-weight:800;cursor:pointer;margin-top:12px;}
+    .btn-back{background:transparent;color:var(--muted);border:1px solid var(--border);padding:10px 20px;border-radius:8px;font-size:14px;cursor:pointer;margin-top:16px;}
+    input[type="text"]{width:100%;padding:18px;border-radius:12px;border:2px solid var(--border);background:var(--bg);color:white;font-size:26px;text-align:center;letter-spacing:3px;margin-bottom:16px;}
+    .step-view{display:none;}
+    .step-view.active{display:block;}
+    .ticket-display{font-size:100px;font-weight:900;color:var(--accent);margin:16px 0;line-height:1;}
+    /* Tabs for check-in method */
+    .method-tabs{display:flex;gap:8px;margin-bottom:20px;justify-content:center;}
+    .method-tab{background:var(--bg);color:var(--muted);border:1px solid var(--border);padding:10px 18px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;}
+    .method-tab.active{background:var(--blue);color:white;border-color:var(--blue);}
+    .method-pane{display:none;}
+    .method-pane.active{display:block;}
+    /* NFC */
+    .nfc-anim{padding:24px;}
+    .nfc-ring{width:80px;height:80px;border-radius:50%;border:4px solid var(--blue);margin:0 auto 14px;animation:nfcPulse 1.4s ease-in-out infinite;}
+    @keyframes nfcPulse{0%,100%{box-shadow:0 0 0 0 rgba(59,130,246,0.5);}50%{box-shadow:0 0 0 20px rgba(59,130,246,0);}}
+    /* OCR */
+    .ocr-area{border:2px dashed var(--border);border-radius:10px;padding:20px;cursor:pointer;color:var(--muted);}
+    .ocr-area:hover{border-color:var(--accent);color:var(--accent);}
+    #ocrPreviewKiosk{max-width:100%;border-radius:8px;margin-top:10px;display:none;}
+    .owner-box{background:rgba(16,185,129,0.1);border:1px solid var(--accent);padding:14px;border-radius:10px;text-align:left;margin-bottom:16px;display:none;}
+    .steps-indicator{display:flex;gap:6px;justify-content:center;margin-bottom:20px;}
+    .step-dot{width:10px;height:10px;border-radius:50%;background:var(--border);}
+    .step-dot.done{background:var(--accent);}
+    .step-dot.active{background:var(--blue);}
+    #errorMsg{color:#fca5a5;font-size:14px;margin-top:8px;display:none;}
+  </style>
+</head>
+<body>
+<div class="kiosk-card">
+
+  <!-- STEP 1: Language -->
+  <div id="stepLang" class="step-view active">
+    <h1>🏥 Welcome to ZeroPaper Health</h1>
+    <p class="sub">Select your language to begin • Hitahura Ururimi • Choisissez votre langue</p>
+    <div class="grid-2">
+      <button class="option-btn" onclick="setLanguage('EN')">🇬🇧 English</button>
+      <button class="option-btn" onclick="setLanguage('FR')">🇫🇷 Français</button>
+    </div>
+    <button class="option-btn" style="width:100%;font-size:18px;" onclick="setLanguage('RW')">🇷🇼 Ikinyarwanda</button>
+  </div>
+
+  <!-- STEP 2: Department -->
+  <div id="stepDept" class="step-view">
+    <div class="steps-indicator">
+      <div class="step-dot done"></div><div class="step-dot active"></div>
+      <div class="step-dot"></div><div class="step-dot"></div>
+    </div>
+    <h1 id="deptTitle">Select Department</h1>
+    <p class="sub" id="deptSubtitle">What service do you need today?</p>
+    <div class="grid-2">
+      <button class="option-btn" onclick="setDepartment('General Consultation')">🩺 General Consultation</button>
+      <button class="option-btn" onclick="setDepartment('Laboratory & Diagnostics')">🧪 Laboratory & Tests</button>
+      <button class="option-btn" onclick="setDepartment('Pharmacy Dispatch')">💊 Pharmacy & Refills</button>
+      <button class="option-btn" onclick="setDepartment('Emergency Triage')">🚨 Emergency / Urgent</button>
+    </div>
+    <button class="btn-back" onclick="goTo('stepLang')">← Back</button>
+  </div>
+
+  <!-- STEP 3: Check-In Method -->
+  <div id="stepId" class="step-view">
+    <div class="steps-indicator">
+      <div class="step-dot done"></div><div class="step-dot done"></div>
+      <div class="step-dot active"></div><div class="step-dot"></div>
+    </div>
+    <h1 id="idTitle">Identify Yourself</h1>
+    <p class="sub">Choose how to check in</p>
+
+    <div class="method-tabs">
+      <button class="method-tab active" onclick="switchMethod('national-id',this)">🪪 National ID</button>
+      <button class="method-tab" onclick="switchMethod('nfc',this)">💳 NFC Card</button>
+      <button class="method-tab" onclick="switchMethod('ocr',this)">📷 ID Scanner</button>
+    </div>
+
+    <!-- National ID manual entry -->
+    <div id="method-national-id" class="method-pane active">
+      <p style="color:var(--muted);font-size:14px;margin-bottom:12px;">Type your 16-digit National ID or Insurance Number</p>
+      <input type="text" id="manualIdInput" placeholder="1199880000001 23" maxlength="20"
+             oninput="lookupOwner(this.value)" />
+      <div id="ownerPreviewBox" class="owner-box">
+        <p style="color:var(--muted);font-size:13px;margin-bottom:4px;">Patient Profile Found:</p>
+        <p id="previewName" style="font-size:19px;font-weight:700;color:#6ee7b7;"></p>
+      </div>
+      <button id="genTicketBtn" class="btn-primary" onclick="submitKioskCheckin('MANUAL_ID')" style="display:none;">
+        ✅ Generate Queue Ticket
+      </button>
+    </div>
+
+    <!-- NFC tap -->
+    <div id="method-nfc" class="method-pane">
+      <div class="nfc-anim">
+        <div class="nfc-ring"></div>
+        <p style="font-size:16px;font-weight:700;color:var(--blue);">Hold NFC Card or Wristband near reader</p>
+        <p style="color:var(--muted);font-size:13px;margin-top:8px;">Card data will auto-fill. Or enter manually below.</p>
+      </div>
+      <input type="text" id="nfcCardId" placeholder="NFC Card ID (auto-filled)" />
+      <button class="btn-secondary" onclick="submitKioskCheckin('NFC_CARD')">💳 Register with NFC Card</button>
+    </div>
+
+    <!-- OCR scan -->
+    <div id="method-ocr" class="method-pane">
+      <div class="ocr-area" onclick="document.getElementById('kioskOcrFile').click()">
+        <div style="font-size:36px;">📷</div>
+        <p style="font-weight:700;margin-top:8px;">Tap to capture or upload National ID photo</p>
+        <p style="font-size:12px;margin-top:4px;">Front side of Rwanda National ID</p>
+        <img id="ocrPreviewKiosk" />
+      </div>
+      <input type="file" id="kioskOcrFile" accept="image/*" capture="environment" onchange="handleKioskOcr(this)" style="display:none;" />
+      <div id="ocrExtracted" style="display:none;margin-top:12px;">
+        <input type="text" id="ocrKioskName" placeholder="Name from ID..." style="margin-bottom:12px;" />
+        <input type="text" id="ocrKioskId" placeholder="ID number from scan..." />
+        <button class="btn-primary" onclick="submitKioskCheckin('ID_OCR')">✅ Confirm & Get Ticket</button>
+      </div>
+    </div>
+
+    <div id="errorMsg"></div>
+    <button class="btn-back" onclick="goTo('stepDept')">← Back</button>
+  </div>
+
+  <!-- STEP 4: Success -->
+  <div id="stepSuccess" class="step-view">
+    <div class="steps-indicator">
+      <div class="step-dot done"></div><div class="step-dot done"></div>
+      <div class="step-dot done"></div><div class="step-dot active"></div>
+    </div>
+    <h1 style="color:var(--accent);">✅ Check-In Successful!</h1>
+    <p class="sub">Please take a seat. Your queue ticket:</p>
+    <div id="successTicket" class="ticket-display">G-000</div>
+    <p id="successDept" style="font-size:19px;color:#93c5fd;font-weight:600;margin-bottom:8px;"></p>
+    <p id="successName" style="font-size:16px;color:var(--muted);"></p>
+    <p style="margin-top:16px;font-size:14px;color:var(--muted);">Please go to the cashier to complete payment before seeing the doctor.</p>
+    <button class="btn-secondary" onclick="resetKiosk()" style="margin-top:20px;">Done — Next Patient</button>
+  </div>
+
+</div>
+
+<script>
+  let kioskData = { language: 'EN', department: '', identifier: '', full_name: '' };
+
+  function goTo(stepId) {
+    document.querySelectorAll('.step-view').forEach(s => s.classList.remove('active'));
+    document.getElementById(stepId).classList.add('active');
+  }
+
+  function setLanguage(lang) {
+    kioskData.language = lang;
+    const labels = {
+      EN: { dept: 'Select Department', deptSub: 'What service do you need today?', id: 'Identify Yourself' },
+      FR: { dept: 'Sélectionner le service', deptSub: 'Quel service avez-vous besoin?', id: 'Identifiez-vous' },
+      RW: { dept: 'Hitamo Serivisi', deptSub: 'Ni serivisi izihe ukeneye uyu munsi?', id: 'Iyerekane' }
+    };
+    const l = labels[lang] || labels.EN;
+    document.getElementById('deptTitle').innerText = l.dept;
+    document.getElementById('deptSubtitle').innerText = l.deptSub;
+    document.getElementById('idTitle').innerText = l.id;
+    goTo('stepDept');
+  }
+
+  function setDepartment(dept) {
+    kioskData.department = dept;
+    goTo('stepId');
+  }
+
+  function switchMethod(name, btn) {
+    document.querySelectorAll('.method-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.method-tab').forEach(b => b.classList.remove('active'));
+    document.getElementById('method-' + name).classList.add('active');
+    btn.classList.add('active');
+  }
+
+  async function lookupOwner(val) {
+    const v = val.trim().replace(/\s/g, '');
+    const box = document.getElementById('ownerPreviewBox');
+    const nameEl = document.getElementById('previewName');
+    const btn = document.getElementById('genTicketBtn');
+    if (v.length >= 6) {
+      try {
+        const res = await fetch(`/api/v1/patient/lookup/${v}`);
+        const data = await res.json();
+        nameEl.innerText = data.status === 'FOUND' ? `${data.full_name} (${data.category || 'Returning'})` : `New Patient — ID: ${v}`;
+      } catch { nameEl.innerText = `Patient ID: ${v}`; }
+      box.style.display = 'block';
+      btn.style.display = 'block';
+    } else {
+      box.style.display = 'none';
+      btn.style.display = 'none';
+    }
+  }
+
+  function handleKioskOcr(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = document.getElementById('ocrPreviewKiosk');
+      img.src = e.target.result;
+      img.style.display = 'block';
+      document.getElementById('ocrExtracted').style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function submitKioskCheckin(method) {
+    let identifier = '', full_name = '';
+    if (method === 'MANUAL_ID') {
+      identifier = document.getElementById('manualIdInput').value.trim().replace(/\s/g, '');
+      full_name = document.getElementById('previewName').innerText.split('(')[0].trim();
+      if (full_name.startsWith('New Patient')) full_name = `Patient ${identifier.slice(-4)}`;
+    } else if (method === 'NFC_CARD') {
+      identifier = document.getElementById('nfcCardId').value.trim();
+      full_name = `NFC Patient ${identifier.slice(-4) || ''}`;
+      if (!identifier) { showError('Please enter or tap an NFC Card ID.'); return; }
+    } else if (method === 'ID_OCR') {
+      full_name = document.getElementById('ocrKioskName').value.trim();
+      identifier = document.getElementById('ocrKioskId').value.trim();
+    }
+
+    if (!identifier) { showError('Please provide an ID or card to continue.'); return; }
+    if (!kioskData.department) { showError('Please go back and select a department.'); return; }
+
+    kioskData.identifier = identifier;
+    kioskData.full_name = full_name || `Patient ${identifier.slice(-4)}`;
+
+    try {
+      const res = await fetch('/api/v1/checkin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name: kioskData.full_name,
+          identifier: kioskData.identifier,
+          department: kioskData.department,
+          method
+        })
+      });
+      const result = await res.json();
+      if (res.ok && result.status === 'SUCCESS') {
+        document.getElementById('successTicket').innerText = result.ticket_number;
+        document.getElementById('successDept').innerText = result.department;
+        document.getElementById('successName').innerText = result.full_name;
+        goTo('stepSuccess');
+      } else if (res.status === 409) {
+        showError(result.error);
+      } else {
+        showError(result.error || 'Check-in failed. Please see the reception desk.');
+      }
+    } catch { showError('Cannot connect to hospital server. Please see reception.'); }
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('errorMsg');
+    el.innerText = '⚠️ ' + msg;
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 5000);
+  }
+
+  function resetKiosk() {
+    kioskData = { language: 'EN', department: '', identifier: '', full_name: '' };
+    document.getElementById('manualIdInput').value = '';
+    document.getElementById('nfcCardId').value = '';
+    document.getElementById('ownerPreviewBox').style.display = 'none';
+    document.getElementById('genTicketBtn').style.display = 'none';
+    document.getElementById('ocrExtracted').style.display = 'none';
+    const img = document.getElementById('ocrPreviewKiosk');
+    if (img) { img.src=''; img.style.display='none'; }
+    goTo('stepLang');
+  }
+</script>
+</body>
+</html>
