@@ -19,7 +19,17 @@ app = Flask(__name__)
 DATABASE_URL = os.environ.get("DATABASEING_URL") or os.environ.get("DATABASE_URL")
 DB_PATH = os.environ.get("HOSPITAL_DB_PATH", "hospital_local_server.db")
 BACKUP_DIR = os.environ.get("HOSPITAL_BACKUP_DIR", "./local_server_backups")
-STAFF_PIN = os.environ.get("HOSPITAL_STAFF_PIN", "2026")
+_staff_pin_env = os.environ.get("HOSPITAL_STAFF_PIN", "")
+if not _staff_pin_env:
+    import warnings as _warnings
+    _warnings.warn(
+        "HOSPITAL_STAFF_PIN is not set in environment. "
+        "Set a strong PIN in your .env or Docker environment before going to production.",
+        RuntimeWarning,
+        stacklevel=2,
+    )
+    _staff_pin_env = "CHANGE_ME_NOW"
+STAFF_PIN = _staff_pin_env
 
 # Global Watchdog State for UI Banner Reminders
 watchdog_state = {
@@ -219,16 +229,33 @@ def unified_checkin():
 
     with get_db() as conn:
         cur = conn.cursor()
-        sql_date_check = "SELECT COUNT(*) FROM patient_queue WHERE DATE(created_at) = CURRENT_DATE" if DATABASE_URL else "SELECT COUNT(*) FROM patient_queue WHERE date(created_at) = date('now')"
-        cur.execute(sql_date_check)
-        count_today = cur.fetchone()[0] + 1
+        # FIX 4: Count per-department per-day so each department starts at 001 independently.
+        # G-001, D-001, L-001 etc. — no cross-department collisions.
+        sql_dept_count = ("SELECT COUNT(*) FROM patient_queue WHERE DATE(created_at) = CURRENT_DATE AND department = %s"
+                          if DATABASE_URL else
+                          "SELECT COUNT(*) FROM patient_queue WHERE date(created_at) = date('now') AND department = ?")
+        cur.execute(sql_dept_count, (department,))
+        dept_count_today = cur.fetchone()[0] + 1
         prefix = department[0].upper()
-        ticket_no = f"{prefix}-{count_today:03d}"
+        ticket_no = f"{prefix}-{dept_count_today:03d}"
 
-        sql_insert = ("INSERT INTO patient_queue (identifier, full_name, checkin_method, department, priority, ticket_number, payment_status) VALUES (%s, %s, %s, %s, %s, %s, 'PENDING')" 
-                      if DATABASE_URL else 
+        # FIX 6: Check for duplicate check-in (same identifier, same department, same day)
+        sql_dup = ("SELECT id FROM patient_queue WHERE identifier = %s AND department = %s AND DATE(created_at) = CURRENT_DATE AND status NOT IN ('SERVED') LIMIT 1"
+                   if DATABASE_URL else
+                   "SELECT id FROM patient_queue WHERE identifier = ? AND department = ? AND date(created_at) = date('now') AND status NOT IN ('SERVED') LIMIT 1")
+        cur.execute(sql_dup, (identifier, department))
+        existing = cur.fetchone()
+        if existing:
+            cur.close()
+            return jsonify({
+                "status": "DUPLICATE",
+                "error": f"This patient has already checked in for {department} today. Use a different department or wait until tomorrow."
+            }), 409
+
+        sql_insert = ("INSERT INTO patient_queue (identifier, full_name, checkin_method, department, priority, ticket_number, payment_status) VALUES (%s, %s, %s, %s, %s, %s, 'PENDING')"
+                      if DATABASE_URL else
                       "INSERT INTO patient_queue (identifier, full_name, checkin_method, department, priority, ticket_number, payment_status) VALUES (?, ?, ?, ?, ?, ?, 'PENDING')")
-        
+
         cur.execute(sql_insert, (identifier, full_name, method, department, priority, ticket_no))
         conn.commit()
         cur.close()
@@ -280,21 +307,33 @@ def kiosk_manual_checkin():
 
     with get_db() as conn:
         cur = conn.cursor()
+        # FIX 6: Duplicate guard — block same ID checking in to same department twice today
+        sql_dup = ("SELECT id FROM patient_queue WHERE identifier = %s AND department = %s AND DATE(created_at) = CURRENT_DATE AND status NOT IN ('SERVED') LIMIT 1"
+                   if DATABASE_URL else
+                   "SELECT id FROM patient_queue WHERE identifier = ? AND department = ? AND date(created_at) = date('now') AND status NOT IN ('SERVED') LIMIT 1")
+        cur.execute(sql_dup, (national_id, department))
+        if cur.fetchone():
+            cur.close()
+            return jsonify({"status": "DUPLICATE", "error": f"This ID has already checked in for {department} today."}), 409
+
         sql_find = "SELECT full_name FROM patient_queue WHERE identifier = %s LIMIT 1" if DATABASE_URL else "SELECT full_name FROM patient_queue WHERE identifier = ? LIMIT 1"
         cur.execute(sql_find, (national_id,))
         patient = cur.fetchone()
 
-        sql_date_check = "SELECT COUNT(*) FROM patient_queue WHERE DATE(created_at) = CURRENT_DATE" if DATABASE_URL else "SELECT COUNT(*) FROM patient_queue WHERE date(created_at) = date('now')"
-        cur.execute(sql_date_check)
-        count_today = cur.fetchone()[0] + 1
+        # FIX 4: Per-department daily counter
+        sql_dept_count = ("SELECT COUNT(*) FROM patient_queue WHERE DATE(created_at) = CURRENT_DATE AND department = %s"
+                          if DATABASE_URL else
+                          "SELECT COUNT(*) FROM patient_queue WHERE date(created_at) = date('now') AND department = ?")
+        cur.execute(sql_dept_count, (department,))
+        dept_count_today = cur.fetchone()[0] + 1
         prefix = department[0].upper()
-        ticket_no = f"{prefix}-{count_today:03d}"
+        ticket_no = f"{prefix}-{dept_count_today:03d}"
         full_name = patient["full_name"] if patient else f"Citizen ID: {national_id[-4:]}"
 
-        sql_insert = ("INSERT INTO patient_queue (identifier, full_name, checkin_method, department, priority, ticket_number, payment_status) VALUES (%s, %s, 'KIOSK_MANUAL_ID', %s, 'Standard', %s, 'PENDING')" 
-                      if DATABASE_URL else 
+        sql_insert = ("INSERT INTO patient_queue (identifier, full_name, checkin_method, department, priority, ticket_number, payment_status) VALUES (%s, %s, 'KIOSK_MANUAL_ID', %s, 'Standard', %s, 'PENDING')"
+                      if DATABASE_URL else
                       "INSERT INTO patient_queue (identifier, full_name, checkin_method, department, priority, ticket_number, payment_status) VALUES (?, ?, 'KIOSK_MANUAL_ID', ?, 'Standard', ?, 'PENDING')")
-        
+
         cur.execute(sql_insert, (national_id, full_name, department, ticket_no))
         conn.commit()
         cur.close()
@@ -347,19 +386,33 @@ def dashboard_stats():
 @app.route("/api/v1/queue/call-next", methods=["POST"])
 @require_staff_pin
 def call_next():
+    # FIX: Only call patients who have already PAID into the doctor's room.
+    # Workflow: Check-in (WAITING/PENDING) → Pay (WAITING/PAID) → Call (IN_CONSULTATION) → Consult → SERVED
     with get_db() as conn:
         cur = conn.cursor()
-        sql_oldest = "SELECT id, ticket_number FROM patient_queue WHERE status = 'WAITING' ORDER BY id ASC LIMIT 1"
+        sql_oldest = "SELECT id, ticket_number, full_name, department FROM patient_queue WHERE status = 'WAITING' AND payment_status = 'PAID' ORDER BY id ASC LIMIT 1"
         cur.execute(sql_oldest)
         oldest = cur.fetchone()
-        
+
         if oldest:
-            sql_update = "UPDATE patient_queue SET status = 'SERVED' WHERE id = %s" if DATABASE_URL else "UPDATE patient_queue SET status = 'SERVED' WHERE id = ?"
+            sql_update = "UPDATE patient_queue SET status = 'IN_CONSULTATION' WHERE id = %s" if DATABASE_URL else "UPDATE patient_queue SET status = 'IN_CONSULTATION' WHERE id = ?"
             cur.execute(sql_update, (oldest["id"],))
             conn.commit()
             cur.close()
-            return jsonify({"status": "CALLED", "ticket": oldest["ticket_number"]})
+            return jsonify({
+                "status": "CALLED",
+                "ticket": oldest["ticket_number"],
+                "full_name": oldest["full_name"],
+                "department": oldest["department"]
+            })
+        # Check if there are waiting patients who haven't paid yet
+        sql_unpaid = "SELECT COUNT(*) FROM patient_queue WHERE status = 'WAITING' AND payment_status = 'PENDING'"
+        cur.execute(sql_unpaid)
+        unpaid_count = cur.fetchone()[0]
         cur.close()
+
+    if unpaid_count > 0:
+        return jsonify({"status": "AWAITING_PAYMENT", "message": f"{unpaid_count} patient(s) waiting but payment not yet confirmed."})
     return jsonify({"status": "EMPTY"})
 
 @app.route("/api/v1/backup/run", methods=["POST"])
@@ -402,6 +455,7 @@ def cashier_lookup(ticket_no):
     return jsonify({"status": "NOT_FOUND"})
 
 @app.route("/api/v1/cashier/pay", methods=["POST"])
+@require_staff_pin
 def cashier_pay():
     data = request.json or {}
     ticket_no = data.get("ticket_number", "").upper()
@@ -431,7 +485,9 @@ def cashier_pay():
     return jsonify({"status": "SUCCESS", "ticket_number": ticket_no})
 
 # --- TV DISPLAY ROUTES ---
+# FIX 5: Register both /tv and /tv-display so neither returns 404
 @app.route("/tv-display")
+@app.route("/tv")
 def tv_display():
     return render_template("tv_display.html")
 
@@ -442,11 +498,19 @@ def tv_status():
 
     with get_db() as conn:
         cur = conn.cursor()
-        sql_srv = "SELECT ticket_number, full_name, department FROM patient_queue WHERE status = 'SERVED' ORDER BY id DESC LIMIT 1"
+        # Show the patient currently IN_CONSULTATION (with the doctor right now).
+        # Fall back to the most recently SERVED patient if no one is in consultation.
+        sql_srv = "SELECT ticket_number, full_name, department FROM patient_queue WHERE status = 'IN_CONSULTATION' ORDER BY id ASC LIMIT 1"
         cur.execute(sql_srv)
         now_serving = cur.fetchone()
+        if not now_serving:
+            sql_srv_fallback = "SELECT ticket_number, full_name, department FROM patient_queue WHERE status = 'SERVED' ORDER BY id DESC LIMIT 1"
+            cur.execute(sql_srv_fallback)
+            now_serving = cur.fetchone()
 
-        sql_nxt = "SELECT ticket_number, department, checkin_method FROM patient_queue WHERE status = 'WAITING' AND payment_status = 'PAID' ORDER BY id ASC LIMIT 5"
+        # Show all WAITING patients on the TV screen regardless of payment status,
+        # so the waiting room display is populated as soon as patients check in.
+        sql_nxt = "SELECT ticket_number, full_name, department, checkin_method, payment_status FROM patient_queue WHERE status = 'WAITING' ORDER BY id ASC LIMIT 5"
         cur.execute(sql_nxt)
         up_next = [dict(r) for r in cur.fetchall()]
 
@@ -478,9 +542,11 @@ def kiosk_touch_screen():
 
 @app.route("/api/v1/clinical/waiting-tickets", methods=["GET"])
 def get_waiting_tickets():
+    # FIX: Show patients who have been called into consultation (IN_CONSULTATION status),
+    # meaning they have paid and the receptionist has called them to the doctor's room.
     with get_db() as conn:
         cur = conn.cursor()
-        sql_wt = "SELECT ticket_number, full_name, department FROM patient_queue WHERE status = 'WAITING' AND payment_status = 'PAID' ORDER BY id ASC"
+        sql_wt = "SELECT ticket_number, full_name, department FROM patient_queue WHERE status = 'IN_CONSULTATION' ORDER BY id ASC"
         cur.execute(sql_wt)
         tickets = [dict(r) for r in cur.fetchall()]
         cur.close()
@@ -492,28 +558,44 @@ def clinical_save():
     data = request.json or {}
     ticket = data.get("ticket_number")
     diagnosis = data.get("diagnosis")
-    prescription = data.get("prescription")
+    prescription = data.get("prescription", "Pending doctor consultation")
     lab_notes = data.get("lab_notes", "None")
 
     with get_db() as conn:
         cur = conn.cursor()
+        # Check current patient status so we know if this is a nurse vitals
+        # save (WAITING) or a doctor consultation save (IN_CONSULTATION).
+        sql_status = "SELECT status FROM patient_queue WHERE ticket_number = %s LIMIT 1" if DATABASE_URL else "SELECT status FROM patient_queue WHERE ticket_number = ? LIMIT 1"
+        cur.execute(sql_status, (ticket,))
+        row = cur.fetchone()
+        current_status = row["status"] if row else "WAITING"
+
         if DATABASE_URL:
             cur.execute("""
                 INSERT INTO clinical_records (ticket_number, diagnosis, prescription, lab_notes, status)
                 VALUES (%s, %s, %s, %s, 'PENDING_PHARMACY')
-                ON CONFLICT (id) DO UPDATE SET diagnosis = EXCLUDED.diagnosis, prescription = EXCLUDED.prescription, lab_notes = EXCLUDED.lab_notes
+                ON CONFLICT (ticket_number) DO UPDATE SET
+                  diagnosis = EXCLUDED.diagnosis,
+                  prescription = EXCLUDED.prescription,
+                  lab_notes = EXCLUDED.lab_notes
             """, (ticket, diagnosis, prescription, lab_notes))
-            cur.execute("UPDATE patient_queue SET status = 'IN_CONSULTATION' WHERE ticket_number = %s", (ticket,))
+            # Only mark SERVED when the doctor completes a consultation (IN_CONSULTATION).
+            # Nurse triage saves (WAITING patients) leave the queue status unchanged.
+            if current_status == "IN_CONSULTATION":
+                cur.execute("UPDATE patient_queue SET status = 'SERVED' WHERE ticket_number = %s", (ticket,))
         else:
             cur.execute("""
                 INSERT OR REPLACE INTO clinical_records (ticket_number, diagnosis, prescription, lab_notes, status)
                 VALUES (?, ?, ?, ?, 'PENDING_PHARMACY')
             """, (ticket, diagnosis, prescription, lab_notes))
-            cur.execute("UPDATE patient_queue SET status = 'IN_CONSULTATION' WHERE ticket_number = ?", (ticket,))
+            if current_status == "IN_CONSULTATION":
+                cur.execute("UPDATE patient_queue SET status = 'SERVED' WHERE ticket_number = ?", (ticket,))
         conn.commit()
         cur.close()
 
-    return jsonify({"status": "SUCCESS", "message": "Prescription transmitted securely to hospital pharmacy."})
+    if current_status == "IN_CONSULTATION":
+        return jsonify({"status": "SUCCESS", "message": "Prescription transmitted securely to hospital pharmacy."})
+    return jsonify({"status": "SUCCESS", "message": "Nurse vitals and triage notes saved successfully."})
 
 @app.route("/api/v1/pharmacy/pending", methods=["GET"])
 def pharmacy_pending():
